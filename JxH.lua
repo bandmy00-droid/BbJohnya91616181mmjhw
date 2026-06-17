@@ -167,21 +167,27 @@ local function setPrivateImage(img,filename)
     if not found then list[#list+1]=img end
     if St._imageCache[filename] then _safeSet(img,St._imageCache[filename]) end
 end
+local _ICON_DIR="JohnyX"
+pcall(makefolder,_ICON_DIR)
 local function _onDisk(fn)
-    local ok,r=pcall(isfile,fn)
+    local ok,r=pcall(isfile,_ICON_DIR.."/"..fn)
     return ok and r==true
 end
 local function _fetchIcon(fn)
     if St._imageCache[fn] then return St._imageCache[fn] end
+    local path=_ICON_DIR.."/"..fn
     if _onDisk(fn) then
-        local ok,a=pcall(getcustomasset,fn)
+        local ok,a=pcall(getcustomasset,path)
         if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a; return a end
     end
-    local dlOk,data=pcall(game.HttpGet,game,St.PUBLIC_REPO_URL..fn)
-    if dlOk and type(data)=="string" and #data>100 then
-        pcall(writefile,fn,data)
-        task.wait(0.1)
-        local ok2,a2=pcall(getcustomasset,fn)
+    local dlOk,data=pcall(function() return Sv.HttpService:GetAsync(St.PUBLIC_REPO_URL..fn) end)
+    if not dlOk or type(data)~="string" or #data<50 then
+        dlOk,data=pcall(game.HttpGet,game,St.PUBLIC_REPO_URL..fn)
+    end
+    if dlOk and type(data)=="string" and #data>50 then
+        pcall(writefile,path,data)
+        task.wait(0.15)
+        local ok2,a2=pcall(getcustomasset,path)
         if ok2 and type(a2)=="string" and #a2>4 then St._imageCache[fn]=a2; return a2 end
     end
     return nil
@@ -189,7 +195,7 @@ end
 local function _preloadFromDisk()
     for _,fn in ipairs(St.ALL_ASSETS) do
         if not St._imageCache[fn] and _onDisk(fn) then
-            local ok,a=pcall(getcustomasset,fn)
+            local ok,a=pcall(getcustomasset,_ICON_DIR.."/"..fn)
             if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a end
         end
     end
@@ -2029,10 +2035,26 @@ function F.applySnowAnims(char)
             playTrack("idle")
         end
     end
+    local wasDown=false
     local stateConn=hum.StateChanged:Connect(function(_,newState)
+        if F.isPlayerDowned(Sv.LocalPlayer) then
+            wasDown=true
+            if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
+            return
+        end
         if newState==Enum.HumanoidStateType.GettingUp then
             if currentTrack then currentTrack:Stop(0); currentTrack=nil end
-            task.delay(0.1,updateState)
+            return
+        end
+        if wasDown then
+            wasDown=false
+            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
+            task.delay(0.15,function()
+                if St.Settings.SnowAnimation then
+                    local c=Sv.LocalPlayer.Character
+                    if c then F.applySnowAnims(c) end
+                end
+            end)
             return
         end
         updateState()
