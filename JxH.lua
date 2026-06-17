@@ -98,7 +98,7 @@ local St={
     livesTrackTimer=0,
     reviveLoopId=0,
     selfReviveLoopId=0,
-    PUBLIC_REPO_URL="https://raw.githubusercontent.com/bandmy00-droid/JohnyX-V5.0/main/",
+    PUBLIC_REPO_URL="https://raw.githubusercontent.com/bandmy00-droid/JohnyX-V6.0/main/",
     Language="EN",
     Analytics={
         farmSuccess=0,farmFail=0,escapeCount=0,
@@ -1993,7 +1993,10 @@ function F.applySnowAnims(char)
         climb=loadAnim(_SNOW_CLIMB,true),
         swim=loadAnim(_SNOW_SWIM,true)
     }
+    local _snowTrackSet={}
+    for _,t in pairs(St._snowTracks) do _snowTrackSet[t]=true end
     local currentTrack=nil
+    local _snowYielding=false
     local function playTrack(trackName,transition)
         local track=St._snowTracks[trackName]
         if currentTrack==track then return end
@@ -2002,11 +2005,16 @@ function F.applySnowAnims(char)
         if track then track:Play(transition or 0.2) end
     end
     local function updateState()
+        if _snowYielding then return end
         if F.isPlayerDowned(Sv.LocalPlayer) then
             if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
             return
         end
         local state=hum:GetState()
+        if state==Enum.HumanoidStateType.GettingUp then
+            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
+            return
+        end
         if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then
             playTrack("jump",0)
         elseif state==Enum.HumanoidStateType.Climbing then
@@ -2031,6 +2039,7 @@ function F.applySnowAnims(char)
             if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
             return
         end
+        if _snowYielding then return end
         local state=hum:GetState()
         if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then return end
         if speed>0.5 then
@@ -2040,7 +2049,32 @@ function F.applySnowAnims(char)
             playTrack("idle")
         end
     end)
-    St._snowConns={stateConn,runConn}
+    local yieldConn=animator.AnimationPlayed:Connect(function(playingTrack)
+        if _snowTrackSet[playingTrack] then return end
+        if playingTrack.Priority==Enum.AnimationPriority.Action
+        or playingTrack.Priority==Enum.AnimationPriority.Action2
+        or playingTrack.Priority==Enum.AnimationPriority.Action3
+        or playingTrack.Priority==Enum.AnimationPriority.Action4 then
+            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
+            _snowYielding=true
+            playingTrack.Stopped:Connect(function()
+                for _,t in ipairs(animator:GetPlayingAnimationTracks()) do
+                    if not _snowTrackSet[t] then
+                        if t.Priority==Enum.AnimationPriority.Action
+                        or t.Priority==Enum.AnimationPriority.Action2
+                        or t.Priority==Enum.AnimationPriority.Action3
+                        or t.Priority==Enum.AnimationPriority.Action4 then
+                            return
+                        end
+                    end
+                end
+                task.wait(0.35)
+                _snowYielding=false
+                updateState()
+            end)
+        end
+    end)
+    St._snowConns={stateConn,runConn,yieldConn}
     updateState()
 end
 function F.stopSnowAnimation(keepSetting)
