@@ -45,7 +45,7 @@ local St={
         RemoveFog=true,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
         SnowAnimation=false,AntiVoid=false,
-        ThemeHue=0,FpsBoost=false
+        ThemeHue=0,FpsBoost=false,ShowAds=true
     },
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
     DistSettings={OffsetY=-4.5,Font=Enum.Font.GothamBold},
@@ -167,6 +167,9 @@ local function setPrivateImage(img,filename)
     if not found then list[#list+1]=img end
     if St._imageCache[filename] then _safeSet(img,St._imageCache[filename]) end
 end
+local _getCustomAsset=(type(getcustomasset)=="function" and getcustomasset)
+    or (type(getsynasset)=="function" and getsynasset)
+    or function() return nil end
 local _ICON_DIR="JohnyX"
 pcall(makefolder,_ICON_DIR)
 local function _onDisk(fn)
@@ -177,7 +180,7 @@ local function _fetchIcon(fn)
     if St._imageCache[fn] then return St._imageCache[fn] end
     local path=_ICON_DIR.."/"..fn
     if _onDisk(fn) then
-        local ok,a=pcall(getcustomasset,path)
+        local ok,a=pcall(_getCustomAsset,path)
         if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a; return a end
     end
     local dlOk,data=pcall(function() return Sv.HttpService:GetAsync(St.PUBLIC_REPO_URL..fn) end)
@@ -186,16 +189,20 @@ local function _fetchIcon(fn)
     end
     if dlOk and type(data)=="string" and #data>50 then
         pcall(writefile,path,data)
-        task.wait(0.15)
-        local ok2,a2=pcall(getcustomasset,path)
-        if ok2 and type(a2)=="string" and #a2>4 then St._imageCache[fn]=a2; return a2 end
+        local asset
+        for _=1,4 do
+            task.wait(0.25)
+            local ok2,a2=pcall(_getCustomAsset,path)
+            if ok2 and type(a2)=="string" and #a2>4 then asset=a2; break end
+        end
+        if asset then St._imageCache[fn]=asset; return asset end
     end
     return nil
 end
 local function _preloadFromDisk()
     for _,fn in ipairs(St.ALL_ASSETS) do
         if not St._imageCache[fn] and _onDisk(fn) then
-            local ok,a=pcall(getcustomasset,_ICON_DIR.."/"..fn)
+            local ok,a=pcall(_getCustomAsset,_ICON_DIR.."/"..fn)
             if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a end
         end
     end
@@ -1703,26 +1710,56 @@ function F.startHitbox()
 end
 function F.enableFogRemoval()
     if St.Cn.fog then St.Cn.fog:Disconnect(); St.Cn.fog=nil end
+    if St.Cn.fogEC then St.Cn.fogEC:Disconnect(); St.Cn.fogEC=nil end
+    if St.Cn.fogCC then St.Cn.fogCC:Disconnect(); St.Cn.fogCC=nil end
     if St.Fl.fogLoopRunning then return end
     St.Fl.fogLoopRunning=true
+    local function _clearColorEffect(obj)
+        if obj:IsA("ColorCorrectionEffect") then
+            pcall(function()
+                obj.TintColor=Color3_new(1,1,1)
+                obj.Brightness=0
+                obj.Contrast=0
+                obj.Saturation=0
+            end)
+        end
+    end
     task.spawn(function()
         while St.Fl.fogLoopRunning and St.Settings.RemoveFog do
             pcall(function()
                 Sv.Lighting.FogEnd=1e9; Sv.Lighting.FogStart=1e9-100
+                Sv.Lighting.ExposureCompensation=0
                 for _,obj in ipairs(Sv.Lighting:GetChildren()) do
                     if obj:IsA("Atmosphere") then obj.Density=0; obj.Haze=0; obj.Glare=0; obj.Offset=0 end
+                    _clearColorEffect(obj)
                 end
             end)
-            task.wait(10)
+            task.wait(2)
         end
         St.Fl.fogLoopRunning=false
     end)
-    St.Cn.fog=Sv.Lighting.ChildAdded:Connect(function(child)
-        if St.Settings.RemoveFog and child:IsA("Atmosphere") then
-            task.defer(function()
-                if child and child.Parent then child.Density=0; child.Haze=0; child.Glare=0; child.Offset=0 end
-            end)
+    St.Cn.fogEC=Sv.Lighting:GetPropertyChangedSignal("ExposureCompensation"):Connect(function()
+        if St.Settings.RemoveFog then
+            pcall(function() Sv.Lighting.ExposureCompensation=0 end)
         end
+    end)
+    St.Cn.fog=Sv.Lighting.ChildAdded:Connect(function(child)
+        if not St.Settings.RemoveFog then return end
+        task.defer(function()
+            if not child or not child.Parent then return end
+            if child:IsA("Atmosphere") then
+                child.Density=0; child.Haze=0; child.Glare=0; child.Offset=0
+            end
+            pcall(function() _clearColorEffect(child) end)
+        end)
+    end)
+    St.Cn.fogCC=Sv.Lighting.DescendantAdded:Connect(function(child)
+        if not St.Settings.RemoveFog then return end
+        task.defer(function()
+            if child and child.Parent then
+                pcall(function() _clearColorEffect(child) end)
+            end
+        end)
     end)
 end
 function F.disableFogRemoval()
@@ -1732,6 +1769,8 @@ function F.disableFogRemoval()
         if obj and obj.Parent then pcall(function() obj.Density=vals.Density; obj.Haze=vals.Haze end) end
     end
     if St.Cn.fog then St.Cn.fog:Disconnect(); St.Cn.fog=nil end
+    if St.Cn.fogEC then St.Cn.fogEC:Disconnect(); St.Cn.fogEC=nil end
+    if St.Cn.fogCC then St.Cn.fogCC:Disconnect(); St.Cn.fogCC=nil end
 end
 function F.stopAntiAFK()
     St.Settings.AntiAFK=false
@@ -2074,10 +2113,25 @@ function F.applySnowAnims(char)
         end
     end)
     St._snowConns={stateConn,runConn}
+    if St.Cn.snowRefresh then St.Cn.snowRefresh:Disconnect(); St.Cn.snowRefresh=nil end
+    local _refreshT=0
+    St.Cn.snowRefresh=Sv.RunService.Heartbeat:Connect(function(dt)
+        if not St.Settings.SnowAnimation then
+            if St.Cn.snowRefresh then St.Cn.snowRefresh:Disconnect(); St.Cn.snowRefresh=nil end
+            return
+        end
+        _refreshT=_refreshT+dt
+        if _refreshT>=10 then
+            _refreshT=0
+            local c=Sv.LocalPlayer.Character
+            if c then F.applySnowAnims(c) end
+        end
+    end)
     updateState()
 end
 function F.stopSnowAnimation(keepSetting)
     if not keepSetting then St.Settings.SnowAnimation=false end
+    if St.Cn.snowRefresh then St.Cn.snowRefresh:Disconnect(); St.Cn.snowRefresh=nil end
     F._cleanSnowState()
     local char=Sv.LocalPlayer.Character
     if char then
@@ -2747,7 +2801,7 @@ local _LANG={
         tog_fly="Fly", tog_speed_boost="Speed Boost", tog_anti_afk="Anti AFK",
         tog_remove_fog="Remove Fog", tog_snow_anim="Snow Animation", tog_anti_void="Anti-Void",
         tog_ghost_mode="Ghost Mode", tog_hitbox="Hitbox", tog_fps_boost="FPS Boost",
-        sec_fpsboost="FPS BOOST",
+        sec_fpsboost="FPS BOOST", tog_ads="Show Ads",
         sl_name_offset="Name Offset", sl_dist_offset="Dist Offset", sl_heart_size="Heart Size",
         sl_hitbox_dist="Hitbox Distance",
         sl_height="Height", sl_tilt="Tilt", sl_min_value="Min Value",
@@ -2797,7 +2851,7 @@ local _LANG={
         tog_fly="Полёт", tog_speed_boost="Ускорение", tog_anti_afk="Анти-АФК",
         tog_remove_fog="Убрать туман", tog_snow_anim="Снежная анимация", tog_anti_void="Анти-Пустота",
         tog_ghost_mode="Режим призрака", tog_hitbox="Хитбокс", tog_fps_boost="FPS Boost",
-        sec_fpsboost="FPS BOOST",
+        sec_fpsboost="FPS BOOST", tog_ads="Показ рекл.",
         sl_name_offset="Смещ. имени", sl_dist_offset="Смещ. дист.", sl_heart_size="Размер сердца",
         sl_hitbox_dist="Дистанция хитбокса",
         sl_height="Высота", sl_tilt="Наклон", sl_min_value="Мин. ценность",
@@ -4112,6 +4166,15 @@ local function buildUI()
         UI.makeToggle(uGrid,"AntiVoid",_T("tog_anti_void"),nil,"tog_anti_void")
         UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_links")
+        _LS(settPage,"sec_fpsboost")
+        do
+            local fpsGrid=UI.makeGridContainer(settPage)
+            UI.A(settPage,fpsGrid)
+            UI.makeToggle(fpsGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
+                if on then F.startFpsBoost() else F.stopFpsBoost() end
+            end,"tog_fps_boost")
+            UI.makeToggle(fpsGrid,"ShowAds",_T("tog_ads"),nil,"tog_ads")
+        end
         do
             local TG_LINK="https://t.me/JohnyX_STK"
             local tgRow=Instance_new("Frame"); tgRow.Parent=settPage
@@ -4154,15 +4217,6 @@ local function buildUI()
             if ui then UI.showToast(_T("toast_hop"),ui) end
             F.serverHop()
         end))
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_fpsboost")
-        do
-            local fpsGrid=UI.makeGridContainer(settPage)
-            UI.A(settPage,fpsGrid)
-            UI.makeToggle(fpsGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
-                if on then F.startFpsBoost() else F.stopFpsBoost() end
-            end,"tog_fps_boost")
-        end
         UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_transparency")
         do
@@ -4349,7 +4403,7 @@ local function buildUI()
     _buildSettings()
     selectTab("home")
     F.applyTheme(St.Settings.ThemeHue)
-    task.delay(0.5,function() UI.showToast(_T("toast_started"),ScreenGui) end)
+    task.delay(0.5,function() if St.Settings.ShowAds then UI.showToast(_T("toast_started"),ScreenGui) end end)
     task.defer(function()
         St.UIRefs.baseW=MainFrame.AbsoluteSize.X
         St.UIRefs.baseH=MainFrame.AbsoluteSize.Y
@@ -4537,6 +4591,9 @@ end
 local function init()
     -- [إصلاح] حماية الهوك بالكامل لمنع كراش الـ PlayerModule الذي يسبب المشي اللانهائي
     pcall(function()
+        local _callerWorks=false
+        pcall(function() _callerWorks=(checkcaller()==true) end)
+        if not _callerWorks then return end
         local oldIndex
         oldIndex = hookmetamethod(game, "__index", function(self, key)
             if not checkcaller() and key == "WalkSpeed" then
