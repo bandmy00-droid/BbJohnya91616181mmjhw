@@ -146,9 +146,15 @@ local function _applyToAll(filename,asset)
     St._imageCache[filename]=asset
     local list=St._imgByFile[filename]
     if list then
-        for i=1,#list do
+        local i=1
+        while i<=#list do
             local img=list[i]
-            if St._imgMap[img]==filename then _safeSet(img,asset) end
+            if img and img.Parent~=nil and St._imgMap[img]==filename then
+                _safeSet(img,asset)
+                i=i+1
+            else
+                table.remove(list,i)
+            end
         end
     end
 end
@@ -1993,10 +1999,7 @@ function F.applySnowAnims(char)
         climb=loadAnim(_SNOW_CLIMB,true),
         swim=loadAnim(_SNOW_SWIM,true)
     }
-    local _snowTrackSet={}
-    for _,t in pairs(St._snowTracks) do _snowTrackSet[t]=true end
     local currentTrack=nil
-    local _snowYielding=false
     local function playTrack(trackName,transition)
         local track=St._snowTracks[trackName]
         if currentTrack==track then return end
@@ -2005,16 +2008,11 @@ function F.applySnowAnims(char)
         if track then track:Play(transition or 0.2) end
     end
     local function updateState()
-        if _snowYielding then return end
         if F.isPlayerDowned(Sv.LocalPlayer) then
             if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
             return
         end
         local state=hum:GetState()
-        if state==Enum.HumanoidStateType.GettingUp then
-            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
-            return
-        end
         if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then
             playTrack("jump",0)
         elseif state==Enum.HumanoidStateType.Climbing then
@@ -2032,6 +2030,11 @@ function F.applySnowAnims(char)
         end
     end
     local stateConn=hum.StateChanged:Connect(function(_,newState)
+        if newState==Enum.HumanoidStateType.GettingUp then
+            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
+            task.delay(0.1,updateState)
+            return
+        end
         updateState()
     end)
     local runConn=hum.Running:Connect(function(speed)
@@ -2039,7 +2042,6 @@ function F.applySnowAnims(char)
             if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
             return
         end
-        if _snowYielding then return end
         local state=hum:GetState()
         if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then return end
         if speed>0.5 then
@@ -2049,32 +2051,7 @@ function F.applySnowAnims(char)
             playTrack("idle")
         end
     end)
-    local yieldConn=animator.AnimationPlayed:Connect(function(playingTrack)
-        if _snowTrackSet[playingTrack] then return end
-        if playingTrack.Priority==Enum.AnimationPriority.Action
-        or playingTrack.Priority==Enum.AnimationPriority.Action2
-        or playingTrack.Priority==Enum.AnimationPriority.Action3
-        or playingTrack.Priority==Enum.AnimationPriority.Action4 then
-            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
-            _snowYielding=true
-            playingTrack.Stopped:Connect(function()
-                for _,t in ipairs(animator:GetPlayingAnimationTracks()) do
-                    if not _snowTrackSet[t] then
-                        if t.Priority==Enum.AnimationPriority.Action
-                        or t.Priority==Enum.AnimationPriority.Action2
-                        or t.Priority==Enum.AnimationPriority.Action3
-                        or t.Priority==Enum.AnimationPriority.Action4 then
-                            return
-                        end
-                    end
-                end
-                task.wait(0.35)
-                _snowYielding=false
-                updateState()
-            end)
-        end
-    end)
-    St._snowConns={stateConn,runConn,yieldConn}
+    St._snowConns={stateConn,runConn}
     updateState()
 end
 function F.stopSnowAnimation(keepSetting)
@@ -4156,6 +4133,15 @@ local function buildUI()
             F.serverHop()
         end))
         UI.A(settPage,UI.makeDivider(settPage))
+        _LS(settPage,"sec_fpsboost")
+        do
+            local fpsGrid=UI.makeGridContainer(settPage)
+            UI.A(settPage,fpsGrid)
+            UI.makeToggle(fpsGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
+                if on then F.startFpsBoost() else F.stopFpsBoost() end
+            end,"tog_fps_boost")
+        end
+        UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_transparency")
         do
             local transRow=Instance_new("Frame"); transRow.Parent=settPage
@@ -4334,15 +4320,6 @@ local function buildUI()
             end)
             UI.A(settPage,winRow)
         end
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_fpsboost")
-        do
-            local fpsGrid=UI.makeGridContainer(settPage)
-            UI.A(settPage,fpsGrid)
-            UI.makeToggle(fpsGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
-                if on then F.startFpsBoost() else F.stopFpsBoost() end
-            end,"tog_fps_boost")
-        end
     end
     _buildHome(); task.wait()
     _buildESP(); task.wait()
@@ -4367,7 +4344,9 @@ local function buildUI()
                 hasDragged=false
                 dragInput=input
                 dragStart=input.Position
-                startPos=MainBtn.Position
+                local ap=MainBtn.AbsolutePosition
+                startPos=UDim2_new(0,ap.X,0,ap.Y)
+                MainBtn.Position=startPos
             end
         end)
         Sv.UserInputService.InputEnded:Connect(function(input)
