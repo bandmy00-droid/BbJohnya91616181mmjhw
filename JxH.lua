@@ -148,70 +148,14 @@ function F.setToggleState(sName,state)
 end
 
 
-local _debugLogs={}
-local _debugScroll=nil
-local function _log(msg)
-    local t=tostring(msg)
-    table.insert(_debugLogs,t)
-    if _debugScroll and _debugScroll.Parent then
-        local lbl=Instance_new("TextLabel")
-        lbl.Size=UDim2_new(1,-10,0,16)
-        lbl.BackgroundTransparency=1
-        lbl.TextColor3=Color3_new(1,1,1)
-        lbl.TextSize=10
-        lbl.Font=Enum.Font.Code
-        lbl.TextXAlignment=Enum.TextXAlignment.Left
-        lbl.Text=t
-        lbl.Parent=_debugScroll
-        _debugScroll.CanvasSize=UDim2_new(0,0,0,#_debugLogs*16)
-        _debugScroll.CanvasPosition=Vector2.new(0,#_debugLogs*16)
-    end
-end
-local function _createDebugUI()
-    local sg=Instance_new("ScreenGui")
-    sg.Name="JxH_Debug"
-    sg.DisplayOrder=999
-    pcall(function() sg.Parent=Sv.CoreGui end)
-    if not sg.Parent then pcall(function() sg.Parent=Sv.LocalPlayer:WaitForChild("PlayerGui") end) end
-    local fr=Instance_new("Frame")
-    fr.Size=UDim2_new(0,350,0,250)
-    fr.Position=UDim2_new(0,10,0,10)
-    fr.BackgroundColor3=Color3_fromRGB(20,20,20)
-    fr.BorderSizePixel=0
-    fr.Parent=sg
-    local btn=Instance_new("TextButton")
-    btn.Size=UDim2_new(1,0,0,30)
-    btn.Text="COPY LOGS"
-    btn.BackgroundColor3=Color3_fromRGB(50,150,50)
-    btn.TextColor3=Color3_new(1,1,1)
-    btn.Font=Enum.Font.GothamBold
-    btn.TextSize=12
-    btn.BorderSizePixel=0
-    btn.Parent=fr
-    btn.MouseButton1Click:Connect(function()
-        pcall(function() setclipboard(table.concat(_debugLogs,"\n")) end)
-    end)
-    local sf=Instance_new("ScrollingFrame")
-    sf.Size=UDim2_new(1,0,1,-30)
-    sf.Position=UDim2_new(0,0,0,30)
-    sf.BackgroundTransparency=1
-    sf.BorderSizePixel=0
-    sf.ScrollBarThickness=4
-    sf.Parent=fr
-    local ll=Instance_new("UIListLayout")
-    ll.Parent=sf
-    _debugScroll=sf
-    _log("Debug UI Initialized")
-end
-task.spawn(_createDebugUI)
+local _ICON_DIR="JxH_Icons"
+pcall(makefolder,_ICON_DIR)
 local function _safeSet(img,asset)
-    _log("safeSet called: "..tostring(asset))
     pcall(function()
-        if not img or img.Parent==nil then _log("safeSet failed: img nil or no parent"); return end
+        if not img or img.Parent==nil then return end
+        img.Image=""
+        task.wait(0.05)
         img.Image=asset
-        task.defer(function()
-            pcall(function() if img and img.Parent then img.Image=asset end end)
-        end)
     end)
 end
 local function _applyToAll(filename,asset)
@@ -244,57 +188,51 @@ local _getCustomAsset=(type(getcustomasset)=="function" and getcustomasset)
     or (type(getsynasset)=="function" and getsynasset)
     or function() return nil end
 local function _fetchIcon(fn)
-    _log("fetchIcon: "..fn)
-    if St._imageCache[fn] then _log("fetchIcon: found in cache"); return St._imageCache[fn] end
-    local path="JxH_"..fn
+    if St._imageCache[fn] then return St._imageCache[fn] end
+    local path=_ICON_DIR.."/"..fn
     local function _tryAsset()
         local ok,a=pcall(_getCustomAsset,path)
-        _log("tryAsset "..fn.." ok:"..tostring(ok).." type:"..type(a))
         return ok and type(a)=="string" and #a>4 and a
     end
     local okS,hasFile=pcall(isfile,path)
-    _log("isfile "..path.." ok:"..tostring(okS).." has:"..tostring(hasFile))
     if okS and hasFile then
         local okR,content=pcall(readfile,path)
-        _log("readfile "..path.." ok:"..tostring(okR).." len:"..(type(content)=="string" and tostring(#content) or "nil"))
         if okR and type(content)=="string" and #content>50 then
             local a=_tryAsset()
-            if a then St._imageCache[fn]=a; _log("Loaded from disk: "..fn); return a end
+            if a then St._imageCache[fn]=a; return a end
         end
+        pcall(delfile,path)
     end
     local url=St.PUBLIC_REPO_URL..fn
-    _log("Downloading: "..url)
     local dlOk,data=pcall(game.HttpGet,game,url)
-    _log("HttpGet ok:"..tostring(dlOk).." len:"..(type(data)=="string" and tostring(#data) or "nil"))
     if not dlOk or type(data)~="string" or #data<50 then
         dlOk,data=pcall(function() return Sv.HttpService:GetAsync(url) end)
-        _log("HttpService ok:"..tostring(dlOk).." len:"..(type(data)=="string" and tostring(#data) or "nil"))
     end
     if dlOk and type(data)=="string" and #data>50 then
-        local wOk,wErr=pcall(writefile,path,data)
-        _log("writefile "..path.." ok:"..tostring(wOk).." err:"..tostring(wErr))
+        pcall(makefolder,_ICON_DIR)
+        pcall(writefile,path,data)
+        task.wait(0.6)
         local asset=nil
-        for i=1,15 do
-            task.wait(0.2)
+        for _=1,6 do
             local checkOk,exists=pcall(isfile,path)
             if checkOk and exists then
                 local okR,content=pcall(readfile,path)
                 if okR and type(content)=="string" and #content>50 then
                     asset=_tryAsset()
-                    if asset then _log("Asset loaded on try "..i); break end
+                    if asset then break end
                 end
             end
+            task.wait(0.3)
         end
         if asset then St._imageCache[fn]=asset; return asset end
-        _log("Failed to load asset after 15 tries: "..fn)
     end
     return nil
 end
 local function _preloadFromDisk()
-    _log("Starting preloadFromDisk")
+    pcall(makefolder,_ICON_DIR)
     for _,fn in ipairs(St.ALL_ASSETS) do
         if not St._imageCache[fn] then
-            local path="JxH_"..fn
+            local path=_ICON_DIR.."/"..fn
             local okS,hasFile=pcall(isfile,path)
             if okS and hasFile then
                 local okR,content=pcall(readfile,path)
@@ -302,15 +240,8 @@ local function _preloadFromDisk()
                     local ok,a=pcall(_getCustomAsset,path)
                     if ok and type(a)=="string" and #a>4 then
                         St._imageCache[fn]=a
-                        _log("Preloaded: "..fn)
-                    else
-                        _log("Preload failed getcustomasset: "..fn)
                     end
-                else
-                    _log("Preload readfile failed/empty: "..fn)
                 end
-            else
-                _log("Preload isfile false: "..fn)
             end
         end
     end
