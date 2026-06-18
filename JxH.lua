@@ -138,7 +138,11 @@ function F.setToggleState(sName,state)
 end
 local function _safeSet(img,asset)
     pcall(function()
-        if img and img.Parent~=nil then img.Image=asset end
+        if not img or img.Parent==nil then return end
+        img.Image=asset
+        task.defer(function()
+            pcall(function() if img and img.Parent then img.Image=asset end end)
+        end)
     end)
 end
 local function _applyToAll(filename,asset)
@@ -178,32 +182,54 @@ local function _onDisk(fn)
 end
 local function _fetchIcon(fn)
     if St._imageCache[fn] then return St._imageCache[fn] end
-    local path=_ICON_DIR.."/"..fn
-    if _onDisk(fn) then
+    local rootPath=fn
+    local subPath=_ICON_DIR.."/"..fn
+    local function _tryAsset(path)
         local ok,a=pcall(_getCustomAsset,path)
-        if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a; return a end
+        return ok and type(a)=="string" and #a>4 and a
+    end
+    local okR=pcall(isfile,rootPath); local onRoot=okR
+    local okS=pcall(isfile,subPath); local onSub=okS
+    if onRoot then
+        local a=_tryAsset(rootPath) or _tryAsset(subPath)
+        if a then St._imageCache[fn]=a; return a end
+    end
+    if onSub and not onRoot then
+        local a=_tryAsset(subPath) or _tryAsset(rootPath)
+        if a then St._imageCache[fn]=a; return a end
     end
     local dlOk,data=pcall(function() return Sv.HttpService:GetAsync(St.PUBLIC_REPO_URL..fn) end)
     if not dlOk or type(data)~="string" or #data<50 then
         dlOk,data=pcall(game.HttpGet,game,St.PUBLIC_REPO_URL..fn)
     end
     if dlOk and type(data)=="string" and #data>50 then
-        pcall(writefile,path,data)
+        pcall(writefile,rootPath,data)
+        pcall(writefile,subPath,data)
         local asset
         for _=1,4 do
             task.wait(0.25)
-            local ok2,a2=pcall(_getCustomAsset,path)
-            if ok2 and type(a2)=="string" and #a2>4 then asset=a2; break end
+            asset=_tryAsset(rootPath) or _tryAsset(subPath)
+            if asset then break end
         end
         if asset then St._imageCache[fn]=asset; return asset end
+        local fbUrl=St.PUBLIC_REPO_URL..fn
+        St._imageCache[fn]=fbUrl
+        return fbUrl
     end
-    return nil
+    local fbUrl=St.PUBLIC_REPO_URL..fn
+    St._imageCache[fn]=fbUrl
+    return fbUrl
 end
 local function _preloadFromDisk()
     for _,fn in ipairs(St.ALL_ASSETS) do
-        if not St._imageCache[fn] and _onDisk(fn) then
-            local ok,a=pcall(_getCustomAsset,_ICON_DIR.."/"..fn)
-            if ok and type(a)=="string" and #a>4 then St._imageCache[fn]=a end
+        if not St._imageCache[fn] then
+            local rootPath=fn; local subPath=_ICON_DIR.."/"..fn
+            local function _tryAsset(path)
+                local ok,a=pcall(_getCustomAsset,path)
+                return ok and type(a)=="string" and #a>4 and a
+            end
+            local a=_tryAsset(rootPath) or _tryAsset(subPath)
+            if a then St._imageCache[fn]=a end
         end
     end
 end
@@ -1712,8 +1738,10 @@ function F.enableFogRemoval()
     if St.Cn.fog then St.Cn.fog:Disconnect(); St.Cn.fog=nil end
     if St.Cn.fogEC then St.Cn.fogEC:Disconnect(); St.Cn.fogEC=nil end
     if St.Cn.fogCC then St.Cn.fogCC:Disconnect(); St.Cn.fogCC=nil end
+    if St.Cn.fogCam then St.Cn.fogCam:Disconnect(); St.Cn.fogCam=nil end
     if St.Fl.fogLoopRunning then return end
     St.Fl.fogLoopRunning=true
+    local cam=workspace.CurrentCamera
     local function _clearColorEffect(obj)
         if obj:IsA("ColorCorrectionEffect") then
             pcall(function()
@@ -1724,42 +1752,44 @@ function F.enableFogRemoval()
             end)
         end
     end
+    local function _clearAll()
+        Sv.Lighting.FogEnd=1e9; Sv.Lighting.FogStart=1e9-100
+        Sv.Lighting.ExposureCompensation=0
+        for _,obj in ipairs(Sv.Lighting:GetChildren()) do
+            if obj:IsA("Atmosphere") then obj.Density=0; obj.Haze=0; obj.Glare=0; obj.Offset=0 end
+            _clearColorEffect(obj)
+        end
+        if cam and cam.Parent then
+            for _,obj in ipairs(cam:GetChildren()) do _clearColorEffect(obj) end
+        end
+    end
     task.spawn(function()
         while St.Fl.fogLoopRunning and St.Settings.RemoveFog do
-            pcall(function()
-                Sv.Lighting.FogEnd=1e9; Sv.Lighting.FogStart=1e9-100
-                Sv.Lighting.ExposureCompensation=0
-                for _,obj in ipairs(Sv.Lighting:GetChildren()) do
-                    if obj:IsA("Atmosphere") then obj.Density=0; obj.Haze=0; obj.Glare=0; obj.Offset=0 end
-                    _clearColorEffect(obj)
-                end
-            end)
-            task.wait(2)
+            pcall(_clearAll)
+            task.wait(1)
         end
         St.Fl.fogLoopRunning=false
     end)
     St.Cn.fogEC=Sv.Lighting:GetPropertyChangedSignal("ExposureCompensation"):Connect(function()
-        if St.Settings.RemoveFog then
-            pcall(function() Sv.Lighting.ExposureCompensation=0 end)
-        end
+        if St.Settings.RemoveFog then pcall(function() Sv.Lighting.ExposureCompensation=0 end) end
     end)
-    St.Cn.fog=Sv.Lighting.ChildAdded:Connect(function(child)
-        if not St.Settings.RemoveFog then return end
-        task.defer(function()
-            if not child or not child.Parent then return end
-            if child:IsA("Atmosphere") then
-                child.Density=0; child.Haze=0; child.Glare=0; child.Offset=0
-            end
-            pcall(function() _clearColorEffect(child) end)
-        end)
-    end)
-    St.Cn.fogCC=Sv.Lighting.DescendantAdded:Connect(function(child)
+    local function _onChildAdded(child)
         if not St.Settings.RemoveFog then return end
         task.defer(function()
             if child and child.Parent then
+                if child:IsA("Atmosphere") then child.Density=0; child.Haze=0; child.Glare=0; child.Offset=0 end
                 pcall(function() _clearColorEffect(child) end)
             end
         end)
+    end
+    St.Cn.fog=Sv.Lighting.ChildAdded:Connect(_onChildAdded)
+    St.Cn.fogCC=Sv.Lighting.DescendantAdded:Connect(function(child)
+        if not St.Settings.RemoveFog then return end
+        task.defer(function() if child and child.Parent then pcall(function() _clearColorEffect(child) end) end end)
+    end)
+    St.Cn.fogCam=cam.ChildAdded:Connect(function(child)
+        if not St.Settings.RemoveFog then return end
+        task.defer(function() if child and child.Parent then pcall(function() _clearColorEffect(child) end) end end)
     end)
 end
 function F.disableFogRemoval()
@@ -1771,6 +1801,7 @@ function F.disableFogRemoval()
     if St.Cn.fog then St.Cn.fog:Disconnect(); St.Cn.fog=nil end
     if St.Cn.fogEC then St.Cn.fogEC:Disconnect(); St.Cn.fogEC=nil end
     if St.Cn.fogCC then St.Cn.fogCC:Disconnect(); St.Cn.fogCC=nil end
+    if St.Cn.fogCam then St.Cn.fogCam:Disconnect(); St.Cn.fogCam=nil end
 end
 function F.stopAntiAFK()
     St.Settings.AntiAFK=false
@@ -4422,7 +4453,6 @@ local function buildUI()
                 dragStart=input.Position
                 local ap=MainBtn.AbsolutePosition
                 startPos=UDim2_new(0,ap.X,0,ap.Y)
-                MainBtn.Position=startPos
             end
         end)
         Sv.UserInputService.InputEnded:Connect(function(input)
@@ -4610,6 +4640,68 @@ local function init()
     buildUI()
     _downloadMissing()
     task.wait(0.2)
+    if St.Settings.ShowAds then
+        task.spawn(function()
+            task.wait(0.8)
+            local sg=Instance_new("ScreenGui")
+            sg.Name="JxH_Intro"; sg.ResetOnSpawn=false; sg.DisplayOrder=20
+            pcall(function() sg.Parent=Sv.CoreGui end)
+            if not sg.Parent then pcall(function() sg.Parent=Sv.LocalPlayer:WaitForChild("PlayerGui") end) end
+            local overlay=Instance_new("Frame")
+            overlay.Size=UDim2_new(1,0,1,0); overlay.BackgroundColor3=Color3_new(0,0,0)
+            overlay.BackgroundTransparency=0.45; overlay.BorderSizePixel=0; overlay.ZIndex=500; overlay.Parent=sg
+            local card=Instance_new("Frame")
+            card.Size=UDim2_new(0,300,0,236); card.Position=UDim2_new(0.5,-150,0.5,-118)
+            card.BackgroundColor3=Color3_fromRGB(18,20,38); card.BorderSizePixel=0; card.ZIndex=501; card.Parent=overlay
+            local crn=Instance_new("UICorner"); crn.Parent=card; crn.CornerRadius=UDim_new(0,12)
+            local tBar=Instance_new("Frame")
+            tBar.Size=UDim2_new(1,0,0,38); tBar.BackgroundColor3=Color3_fromRGB(35,100,220)
+            tBar.BorderSizePixel=0; tBar.ZIndex=502; tBar.Parent=card
+            local tCrn=Instance_new("UICorner"); tCrn.Parent=tBar; tCrn.CornerRadius=UDim_new(0,12)
+            local tFix=Instance_new("Frame"); tFix.Size=UDim2_new(1,0,0,12); tFix.Position=UDim2_new(0,0,1,-12)
+            tFix.BackgroundColor3=Color3_fromRGB(35,100,220); tFix.BorderSizePixel=0; tFix.ZIndex=502; tFix.Parent=tBar
+            local tLbl=Instance_new("TextLabel")
+            tLbl.Size=UDim2_new(1,-44,1,0); tLbl.Position=UDim2_new(0,14,0,0)
+            tLbl.BackgroundTransparency=1; tLbl.Text="JohnyX  V6.0"
+            tLbl.TextColor3=Color3_new(1,1,1); tLbl.Font=Enum.Font.GothamBold
+            tLbl.TextSize=14; tLbl.TextXAlignment=Enum.TextXAlignment.Left; tLbl.ZIndex=503; tLbl.Parent=tBar
+            local xBtn=Instance_new("TextButton")
+            xBtn.Size=UDim2_new(0,28,0,28); xBtn.Position=UDim2_new(1,-34,0.5,-14)
+            xBtn.BackgroundColor3=Color3_fromRGB(55,60,95); xBtn.Text="✕"
+            xBtn.TextColor3=Color3_new(1,1,1); xBtn.Font=Enum.Font.GothamBold
+            xBtn.TextSize=13; xBtn.BorderSizePixel=0; xBtn.ZIndex=503; xBtn.Parent=tBar
+            local xCrn=Instance_new("UICorner"); xCrn.Parent=xBtn; xCrn.CornerRadius=UDim_new(0,6)
+            local subLbl=Instance_new("TextLabel")
+            subLbl.Size=UDim2_new(1,-20,0,18); subLbl.Position=UDim2_new(0,10,0,46)
+            subLbl.BackgroundTransparency=1; subLbl.Text="✦ ما الجديد في هذا الإصدار"
+            subLbl.TextColor3=Color3_fromRGB(110,175,255); subLbl.Font=Enum.Font.GothamSemibold
+            subLbl.TextSize=11; subLbl.TextXAlignment=Enum.TextXAlignment.Left; subLbl.ZIndex=502; subLbl.Parent=card
+            local items={"• FPS Boost — تحسين الأداء للأجهزة الضعيفة","• Snowman Animation — إعادة تشغيل تلقائية كل 10s","• Remove Fog — إزالة تأثيرات القاتل الكاملة","• إصلاح سحب الواجهة على الموبايل","• دعم Delta  و  Arceus X Neo"}
+            for i,txt in ipairs(items) do
+                local lbl=Instance_new("TextLabel")
+                lbl.Size=UDim2_new(1,-16,0,20); lbl.Position=UDim2_new(0,8,0,68+(i-1)*22)
+                lbl.BackgroundTransparency=1; lbl.Text=txt
+                lbl.TextColor3=Color3_fromRGB(195,205,225); lbl.Font=Enum.Font.Gotham
+                lbl.TextSize=10; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=502; lbl.Parent=card
+            end
+            local cntLbl=Instance_new("TextLabel")
+            cntLbl.Size=UDim2_new(1,-16,0,16); cntLbl.Position=UDim2_new(0,8,1,-24)
+            cntLbl.BackgroundTransparency=1; cntLbl.TextColor3=Color3_fromRGB(70,80,120)
+            cntLbl.Font=Enum.Font.Gotham; cntLbl.TextSize=10
+            cntLbl.TextXAlignment=Enum.TextXAlignment.Center; cntLbl.ZIndex=502; cntLbl.Parent=card
+            local function _closeIntro() pcall(function() sg:Destroy() end) end
+            xBtn.MouseButton1Click:Connect(_closeIntro)
+            overlay.InputBegan:Connect(function(inp)
+                if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then _closeIntro() end
+            end)
+            for i=5,1,-1 do
+                if not sg or not sg.Parent then return end
+                pcall(function() cntLbl.Text="يُغلق تلقائياً خلال "..i.." ثواني" end)
+                task.wait(1)
+            end
+            _closeIntro()
+        end)
+    end
     _startVoidSafetyBG()
     if St.Settings.DoubleJump then F.setupDoubleJump() end
     if St._savedBtnPos and St.MainBtn_ref and St.MainBtn_ref.Parent then
