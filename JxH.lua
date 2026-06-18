@@ -1,9 +1,3 @@
-تم تنفيذ جميع التعديلات المطلوبة (نظام Legit Bot الذكي، إحداثيات اللوبي الدقيقة،
-ذكاء الناجي والقاتل، قفل الأمان في الواجهة، وإزالة التعليقات) ودمجها في السكربت
-بالكامل.
-
-إليك السكربت النهائي والكامل جاهز للتشغيل الفوري:
-
 local UPDATE_VERSION = "V6.0"
 local UPDATE_TEXT_EN = "1. New Add Ghost Mode \n2. New Add Hitbox ( Killer ) \n3. Fix Double Jump When you Down \n4. Bug Fixed \n5. fix Snowman Animation \n6. UI Color Customization \n7. More....in 6.0 Version "
 local UPDATE_TEXT_RU = "1. Добавлен Режим призрака \n2. Добавлен Хитбокс (Убийца) \n3. Исправлен двойной прыжок в нокауте \n4. Исправлены ошибки \n5. Исправлена анимация снеговика \n6. Настройка цветов интерфейса \n7. Больше... в версии 6.0 "
