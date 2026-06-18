@@ -190,56 +190,56 @@ local function _onDisk(fn)
     local ok,r=pcall(isfile,_ICON_DIR.."/"..fn)
     return ok and r==true
 end
+
 local function _fetchIcon(fn)
     if St._imageCache[fn] then return St._imageCache[fn] end
-    local rootPath=fn
-    local subPath=_ICON_DIR.."/"..fn
-    local function _tryAsset(path)
+    local path=_ICON_DIR.."/"..fn
+    local function _tryAsset()
         local ok,a=pcall(_getCustomAsset,path)
         return ok and type(a)=="string" and #a>4 and a
     end
-    local okR=pcall(isfile,rootPath); local onRoot=okR
-    local okS=pcall(isfile,subPath); local onSub=okS
-    if onRoot then
-        local a=_tryAsset(rootPath) or _tryAsset(subPath)
+    local okS,hasFile=pcall(isfile,path)
+    if okS and hasFile then
+        local a=_tryAsset()
         if a then St._imageCache[fn]=a; return a end
     end
-    if onSub and not onRoot then
-        local a=_tryAsset(subPath) or _tryAsset(rootPath)
-        if a then St._imageCache[fn]=a; return a end
-    end
-    local dlOk,data=pcall(function() return Sv.HttpService:GetAsync(St.PUBLIC_REPO_URL..fn) end)
+    local url=St.PUBLIC_REPO_URL..fn
+    local dlOk,data=pcall(game.HttpGet,game,url)
     if not dlOk or type(data)~="string" or #data<50 then
-        dlOk,data=pcall(game.HttpGet,game,St.PUBLIC_REPO_URL..fn)
+        dlOk,data=pcall(function() return Sv.HttpService:GetAsync(url) end)
     end
     if dlOk and type(data)=="string" and #data>50 then
-        pcall(writefile,rootPath,data)
-        pcall(writefile,subPath,data)
-        task.wait(0.1)
-        local asset
-        for _=1,4 do
-            task.wait(0.25)
-            asset=_tryAsset(rootPath) or _tryAsset(subPath)
-            if asset then break end
+        pcall(makefolder,_ICON_DIR)
+        pcall(writefile,path,data)
+        local asset=nil
+        for _=1,10 do
+            task.wait(0.2)
+            local checkOk,exists=pcall(isfile,path)
+            if checkOk and exists then
+                asset=_tryAsset()
+                if asset then break end
+            end
         end
         if asset then St._imageCache[fn]=asset; return asset end
-        return nil
     end
     return nil
 end
 local function _preloadFromDisk()
+    pcall(makefolder,_ICON_DIR)
     for _,fn in ipairs(St.ALL_ASSETS) do
         if not St._imageCache[fn] then
-            local rootPath=fn; local subPath=_ICON_DIR.."/"..fn
-            local function _tryAsset(path)
+            local path=_ICON_DIR.."/"..fn
+            local okS,hasFile=pcall(isfile,path)
+            if okS and hasFile then
                 local ok,a=pcall(_getCustomAsset,path)
-                return ok and type(a)=="string" and #a>4 and a
+                if ok and type(a)=="string" and #a>4 then
+                    St._imageCache[fn]=a
+                end
             end
-            local a=_tryAsset(rootPath) or _tryAsset(subPath)
-            if a then St._imageCache[fn]=a end
         end
     end
 end
+
 local _dlGuard={}
 local function _downloadMissing()
     task.spawn(function()
