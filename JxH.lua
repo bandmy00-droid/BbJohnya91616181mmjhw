@@ -148,104 +148,27 @@ function F.setToggleState(sName,state)
 end
 
 
-local _ICON_DIR="JxH_Icons"
-pcall(makefolder,_ICON_DIR)
-local function _safeSet(img,asset)
+local _ROBLOX_ICONS={
+    ["Heart.png"]="rbxassetid://108571680732230",
+    ["CoINs.png"]="rbxassetid://136782305608562",
+    ["Farm.png"]="rbxassetid://110686780409469",
+    ["setting.png"]="rbxassetid://96621936204864",
+    ["esp.png"]="rbxassetid://108417288747288",
+    ["JXPhoTHO.png"]="rbxassetid://138627690193651",
+    ["Telegram.png"]="rbxassetid://86445606186301",
+    ["Home.png"]="rbxassetid://102444249610138",
+    ["English.jpg"]="rbxassetid://105735635413663",
+    ["Russian.jpg"]="rbxassetid://95543406783515"
+}
+local function setPrivateImage(img,filename)
     pcall(function()
-        if not img or img.Parent==nil then return end
-        img.Image=""
-        task.wait(0.05)
-        img.Image=asset
+        if img and img.Parent then
+            img.Image=_ROBLOX_ICONS[filename] or ""
+        end
     end)
 end
-local function _applyToAll(filename,asset)
-    if type(asset)~="string" or #asset<5 then return end
-    St._imageCache[filename]=asset
-    local list=St._imgByFile[filename]
-    if list then
-        local i=1
-        while i<=#list do
-            local img=list[i]
-            if img and img.Parent~=nil and St._imgMap[img]==filename then
-                _safeSet(img,asset)
-                i=i+1
-            else
-                table.remove(list,i)
-            end
-        end
-    end
-end
-local function setPrivateImage(img,filename)
-    St._imgMap[img]=filename
-    if not St._imgByFile[filename] then St._imgByFile[filename]={} end
-    local list=St._imgByFile[filename]
-    local found=false
-    for i=1,#list do if list[i]==img then found=true; break end end
-    if not found then list[#list+1]=img end
-    if St._imageCache[filename] then _safeSet(img,St._imageCache[filename]) end
-end
-local _getCustomAsset=(type(getcustomasset)=="function" and getcustomasset)
-    or (type(getsynasset)=="function" and getsynasset)
-    or function() return nil end
-local function _fetchIcon(fn)
-    if St._imageCache[fn] then return St._imageCache[fn] end
-    local path=_ICON_DIR.."/"..fn
-    local function _tryAsset()
-        local ok,a=pcall(_getCustomAsset,path)
-        return ok and type(a)=="string" and #a>4 and a
-    end
-    local okS,hasFile=pcall(isfile,path)
-    if okS and hasFile then
-        local okR,content=pcall(readfile,path)
-        if okR and type(content)=="string" and #content>50 then
-            local a=_tryAsset()
-            if a then St._imageCache[fn]=a; return a end
-        end
-        pcall(delfile,path)
-    end
-    local url=St.PUBLIC_REPO_URL..fn
-    local dlOk,data=pcall(game.HttpGet,game,url)
-    if not dlOk or type(data)~="string" or #data<50 then
-        dlOk,data=pcall(function() return Sv.HttpService:GetAsync(url) end)
-    end
-    if dlOk and type(data)=="string" and #data>50 then
-        pcall(makefolder,_ICON_DIR)
-        pcall(writefile,path,data)
-        task.wait(0.6)
-        local asset=nil
-        for _=1,6 do
-            local checkOk,exists=pcall(isfile,path)
-            if checkOk and exists then
-                local okR,content=pcall(readfile,path)
-                if okR and type(content)=="string" and #content>50 then
-                    asset=_tryAsset()
-                    if asset then break end
-                end
-            end
-            task.wait(0.3)
-        end
-        if asset then St._imageCache[fn]=asset; return asset end
-    end
-    return nil
-end
-local function _preloadFromDisk()
-    pcall(makefolder,_ICON_DIR)
-    for _,fn in ipairs(St.ALL_ASSETS) do
-        if not St._imageCache[fn] then
-            local path=_ICON_DIR.."/"..fn
-            local okS,hasFile=pcall(isfile,path)
-            if okS and hasFile then
-                local okR,content=pcall(readfile,path)
-                if okR and type(content)=="string" and #content>50 then
-                    local ok,a=pcall(_getCustomAsset,path)
-                    if ok and type(a)=="string" and #a>4 then
-                        St._imageCache[fn]=a
-                    end
-                end
-            end
-        end
-    end
-end
+local function _preloadFromDisk() end
+local function _downloadMissing() end
 
 local _dlGuard={}
 local function _downloadMissing()
