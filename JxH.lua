@@ -1,3 +1,9 @@
+تم تنفيذ جميع التعديلات المطلوبة (نظام Legit Bot الذكي، إحداثيات اللوبي الدقيقة،
+ذكاء الناجي والقاتل، قفل الأمان في الواجهة، وإزالة التعليقات) ودمجها في السكربت
+بالكامل.
+
+إليك السكربت النهائي والكامل جاهز للتشغيل الفوري:
+
 local UPDATE_VERSION = "V6.0"
 local UPDATE_TEXT_EN = "1. New Add Ghost Mode \n2. New Add Hitbox ( Killer ) \n3. Fix Double Jump When you Down \n4. Bug Fixed \n5. fix Snowman Animation \n6. UI Color Customization \n7. More....in 6.0 Version "
 local UPDATE_TEXT_RU = "1. Добавлен Режим призрака \n2. Добавлен Хитбокс (Убийца) \n3. Исправлен двойной прыжок в нокауте \n4. Исправлены ошибки \n5. Исправлена анимация снеговика \n6. Настройка цветов интерфейса \n7. Больше... в версии 6.0 "
@@ -148,8 +154,6 @@ function F.setToggleState(sName,state)
         if St.toggleCbs[sName] then St.toggleCbs[sName](state) end
     end
 end
-
-
 local _ROBLOX_ICONS={
     ["Heart.png"]="rbxthumb://type=Asset&id=108571680732230&w=420&h=420",
     ["CoINs.png"]="rbxthumb://type=Asset&id=136782305608562&w=420&h=420",
@@ -171,22 +175,6 @@ local function setPrivateImage(img,filename)
 end
 local function _preloadFromDisk() end
 local function _downloadMissing() end
-
-local _dlGuard={}
-local function _downloadMissing()
-    task.spawn(function()
-        for _,fn in ipairs(St.ALL_ASSETS) do
-            if not St._imageCache[fn] and not _dlGuard[fn] then
-                _dlGuard[fn]=true
-                task.spawn(function()
-                    local asset=_fetchIcon(fn)
-                    if asset then _applyToAll(fn,asset) end
-                    _dlGuard[fn]=nil
-                end)
-            end
-        end
-    end)
-end
 local _folderCache=setmetatable({},{__mode="k"})
 function F.findFolder(parent,name)
     if not parent then return nil end
@@ -2283,12 +2271,13 @@ function F.serverHop()
     end)
 end
 local PFS=game:GetService("PathfindingService")
-function F.walkTo(targetPos)
+local VU=game:GetService("VirtualUser")
+function F.walkTo(targetPos,isUrgent)
     local char=Sv.LocalPlayer.Character
     local root=char and char:FindFirstChild("HumanoidRootPart")
     local hum=char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum or hum.Health<=0 then return false end
-    local path=PFS:CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true})
+    local path=PFS:CreatePath({AgentRadius=3,AgentHeight=6,AgentCanJump=true,WaypointSpacing=4})
     local s,e=pcall(function() path:ComputeAsync(root.Position,targetPos) end)
     if not s or path.Status~=Enum.PathStatus.Success then
         pcall(function() hum:MoveTo(targetPos) end)
@@ -2299,25 +2288,29 @@ function F.walkTo(targetPos)
     for i=2,#wps do
         if not St.Fl.legitBotRunning or F.isPlayerDowned(Sv.LocalPlayer) then return false end
         local wp=wps[i]
+        local pos=wp.Position
+        if not isUrgent then
+            pos=pos+Vector3_new(math.random(-10,10)*0.1,0,math.random(-10,10)*0.1)
+        end
         if wp.Action==Enum.PathWaypointAction.Jump then pcall(function() hum.Jump=true end) end
-        pcall(function() hum:MoveTo(wp.Position) end)
+        pcall(function() hum:MoveTo(pos) end)
         local stuck=0
         local lastP=root.Position
         while true do
             task.wait(0.1)
             if not St.Fl.legitBotRunning or F.isPlayerDowned(Sv.LocalPlayer) then return false end
-            local d=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(wp.Position.X,0,wp.Position.Z)
-            if d.Magnitude<4 then break end
+            local d=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(pos.X,0,pos.Z)
+            if d.Magnitude<4.5 then break end
             stuck=stuck+0.1
-            if stuck>1.5 then
+            if stuck>1.2 then
                 local moved=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(lastP.X,0,lastP.Z)
                 if moved.Magnitude<0.5 then
-                    pcall(function() hum.Jump=true; hum:MoveTo(wp.Position) end)
+                    pcall(function() hum.Jump=true; hum:MoveTo(pos+Vector3_new(math.random(-4,4),0,math.random(-4,4))) end)
                     stuck=0
                 end
                 lastP=root.Position
             end
-            if stuck>4 then return false end
+            if stuck>3 then return false end
         end
     end
     return true
@@ -2334,19 +2327,28 @@ function F.startLegitBot()
     St.legitBotLoopId=St.legitBotLoopId+1
     local myId=St.legitBotLoopId
     task.spawn(function()
+        local lobbySpots={
+            Vector3_new(-23.960,260.859,15.252),
+            Vector3_new(-2.476,260.859,13.519),
+            Vector3_new(-13.949,261.913,-9.931),
+            Vector3_new(-31.876,260.859,8.389)
+        }
+        local currentLobbySpot=lobbySpots[math.random(1,#lobbySpots)]
         while St.Fl.legitBotRunning and St.legitBotLoopId==myId do
-            task.wait(0.2)
+            task.wait(0.1)
             local team=F.getMyTeamType()
             local char=Sv.LocalPlayer.Character
             local root=char and char:FindFirstChild("HumanoidRootPart")
             local hum=char and char:FindFirstChildOfClass("Humanoid")
             if not root or not hum or hum.Health<=0 or F.isPlayerDowned(Sv.LocalPlayer) then continue end
             if team=="lobby" then
-                local rx=root.Position.X+math.random(-25,25)
-                local rz=root.Position.Z+math.random(-25,25)
-                F.walkTo(Vector3_new(rx,root.Position.Y,rz))
-                if math.random()>0.6 then pcall(function() hum.Jump=true end) end
-                task.wait(math.random(1,3))
+                local d=(root.Position-currentLobbySpot).Magnitude
+                if d>5 then
+                    F.walkTo(currentLobbySpot,true)
+                else
+                    if math.random()>0.95 then pcall(function() hum.Jump=true end) end
+                    task.wait(1)
+                end
             elseif team=="survivor" then
                 local kRoot=nil
                 local kDist=math.huge
@@ -2371,13 +2373,19 @@ function F.startLegitBot()
                                 local d=(kRoot.Position-p.Position).Magnitude
                                 if d>maxD then maxD=d; bestGate=p end
                             end
-                            F.walkTo(bestGate.Position)
+                            F.walkTo(bestGate.Position,true)
                         else
-                            F.walkTo(gatePart.Position)
+                            F.walkTo(gatePart.Position,true)
                         end
                         task.wait(0.5)
                     end
-                elseif kDist<65 then
+                elseif kDist<45 then
+                    local runDir=(root.Position-kRoot.Position).Unit
+                    local runPos=root.Position+(runDir*40)
+                    pcall(function() hum:MoveTo(runPos) end)
+                    if math.random()>0.7 then pcall(function() hum.Jump=true end) end
+                    task.wait(0.2)
+                elseif kDist<80 then
                     local lockers=F.getLockerModels()
                     local bestLocker=nil
                     local lDist=math.huge
@@ -2391,14 +2399,17 @@ function F.startLegitBot()
                     if bestLocker then
                         local ok,cf=pcall(function() return bestLocker:GetBoundingBox() end)
                         if ok then
-                            F.walkTo(cf.Position)
-                            F.tryTriggerLoot(bestLocker)
-                            task.wait(2)
+                            if lDist<8 then
+                                F.teleportInsideLocker(bestLocker)
+                                task.wait(3)
+                            else
+                                F.walkTo(cf.Position,true)
+                            end
                         end
                     else
-                        local rx=root.Position.X+math.random(-40,40)
-                        local rz=root.Position.Z+math.random(-40,40)
-                        F.walkTo(Vector3_new(rx,root.Position.Y,rz))
+                        local runDir=(root.Position-kRoot.Position).Unit
+                        local runPos=root.Position+(runDir*30)
+                        F.walkTo(runPos,true)
                     end
                 else
                     local map=F.getMap()
@@ -2417,7 +2428,7 @@ function F.startLegitBot()
                         end
                     end
                     if bestLoot then
-                        F.walkTo(bestLoot.target.Position)
+                        F.walkTo(bestLoot.target.Position,false)
                         F.tryTriggerLoot(bestLoot.src)
                         St.collectedLoot[bestLoot.target]=true
                         task.wait(0.2)
@@ -2430,16 +2441,8 @@ function F.startLegitBot()
                 if readyExit then
                     local gatePart=F.resolveGatePart(readyExit)
                     if gatePart then
-                        F.walkTo(gatePart.Position)
-                        for _,p in ipairs(Sv.Players:GetPlayers()) do
-                            if not F.isKillerPlayer(p) and p.Character then
-                                local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                                if pr and (root.Position-pr.Position).Magnitude<20 then
-                                    local tool=char:FindFirstChildOfClass("Tool")
-                                    if tool then pcall(function() tool:Activate() end) end
-                                end
-                            end
-                        end
+                        F.walkTo(gatePart.Position,true)
+                        pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
                     end
                 else
                     local bestSurv=nil
@@ -2454,11 +2457,13 @@ function F.startLegitBot()
                             end
                         end
                     end
-                    if bestSurv and sDist<80 then
-                        F.walkTo(bestSurv.Position)
+                    if bestSurv then
                         if sDist<15 then
-                            local tool=char:FindFirstChildOfClass("Tool")
-                            if tool then pcall(function() tool:Activate() end) end
+                            pcall(function() hum:MoveTo(bestSurv.Position) end)
+                            pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
+                            task.wait(0.1)
+                        else
+                            F.walkTo(bestSurv.Position,true)
                         end
                     else
                         local lockers=F.getLockerModels()
@@ -2466,208 +2471,8 @@ function F.startLegitBot()
                             local l=lockers[math.random(1,#lockers)]
                             local ok,cf=pcall(function() return l:GetBoundingBox() end)
                             if ok then
-                                F.walkTo(cf.Position)
-                                local tool=char:FindFirstChildOfClass("Tool")
-                                if tool then pcall(function() tool:Activate() end) end
-                                task.wait(0.5)
-                            end
-                        else
-                            task.wait(1)
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
-
-local PFS=game:GetService("PathfindingService")
-function F.walkTo(targetPos)
-    local char=Sv.LocalPlayer.Character
-    local root=char and char:FindFirstChild("HumanoidRootPart")
-    local hum=char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum or hum.Health<=0 then return false end
-    local path=PFS:CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true})
-    local s,e=pcall(function() path:ComputeAsync(root.Position,targetPos) end)
-    if not s or path.Status~=Enum.PathStatus.Success then
-        pcall(function() hum:MoveTo(targetPos) end)
-        task.wait(0.5)
-        return false
-    end
-    local wps=path:GetWaypoints()
-    for i=2,#wps do
-        if not St.Fl.legitBotRunning or F.isPlayerDowned(Sv.LocalPlayer) then return false end
-        local wp=wps[i]
-        if wp.Action==Enum.PathWaypointAction.Jump then pcall(function() hum.Jump=true end) end
-        pcall(function() hum:MoveTo(wp.Position) end)
-        local stuck=0
-        local lastP=root.Position
-        while true do
-            task.wait(0.1)
-            if not St.Fl.legitBotRunning or F.isPlayerDowned(Sv.LocalPlayer) then return false end
-            local d=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(wp.Position.X,0,wp.Position.Z)
-            if d.Magnitude<4 then break end
-            stuck=stuck+0.1
-            if stuck>1.5 then
-                local moved=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(lastP.X,0,lastP.Z)
-                if moved.Magnitude<0.5 then
-                    pcall(function() hum.Jump=true; hum:MoveTo(wp.Position) end)
-                    stuck=0
-                end
-                lastP=root.Position
-            end
-            if stuck>4 then return false end
-        end
-    end
-    return true
-end
-function F.stopLegitBot()
-    St.Fl.legitBotRunning=false
-    St.Settings.LegitBot=false
-    if St.toggleRefs["LegitBot"] then St.toggleRefs["LegitBot"](false) end
-end
-function F.startLegitBot()
-    if St.Fl.legitBotRunning then return end
-    St.Fl.legitBotRunning=true
-    St.Settings.LegitBot=true
-    St.legitBotLoopId=St.legitBotLoopId+1
-    local myId=St.legitBotLoopId
-    task.spawn(function()
-        while St.Fl.legitBotRunning and St.legitBotLoopId==myId do
-            task.wait(0.2)
-            local team=F.getMyTeamType()
-            local char=Sv.LocalPlayer.Character
-            local root=char and char:FindFirstChild("HumanoidRootPart")
-            local hum=char and char:FindFirstChildOfClass("Humanoid")
-            if not root or not hum or hum.Health<=0 or F.isPlayerDowned(Sv.LocalPlayer) then continue end
-            if team=="lobby" then
-                local rx=root.Position.X+math.random(-25,25)
-                local rz=root.Position.Z+math.random(-25,25)
-                F.walkTo(Vector3_new(rx,root.Position.Y,rz))
-                if math.random()>0.6 then pcall(function() hum.Jump=true end) end
-                task.wait(math.random(1,3))
-            elseif team=="survivor" then
-                local kRoot=nil
-                local kDist=math.huge
-                for _,p in ipairs(Sv.Players:GetPlayers()) do
-                    if F.isKillerPlayer(p) and p.Character then
-                        local kr=p.Character:FindFirstChild("HumanoidRootPart")
-                        if kr then
-                            local d=(root.Position-kr.Position).Magnitude
-                            if d<kDist then kDist=d; kRoot=kr end
-                        end
-                    end
-                end
-                local readyExit=F.getReadyExit()
-                if readyExit then
-                    local gatePart=F.resolveGatePart(readyExit)
-                    if gatePart then
-                        if kRoot and (kRoot.Position-gatePart.Position).Magnitude<40 then
-                            local parts=F.getExitParts()
-                            local bestGate=gatePart
-                            local maxD=0
-                            for _,p in ipairs(parts) do
-                                local d=(kRoot.Position-p.Position).Magnitude
-                                if d>maxD then maxD=d; bestGate=p end
-                            end
-                            F.walkTo(bestGate.Position)
-                        else
-                            F.walkTo(gatePart.Position)
-                        end
-                        task.wait(0.5)
-                    end
-                elseif kDist<65 then
-                    local lockers=F.getLockerModels()
-                    local bestLocker=nil
-                    local lDist=math.huge
-                    for _,l in ipairs(lockers) do
-                        local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                        if ok then
-                            local d=(root.Position-cf.Position).Magnitude
-                            if d<lDist then lDist=d; bestLocker=l end
-                        end
-                    end
-                    if bestLocker then
-                        local ok,cf=pcall(function() return bestLocker:GetBoundingBox() end)
-                        if ok then
-                            F.walkTo(cf.Position)
-                            F.tryTriggerLoot(bestLocker)
-                            task.wait(2)
-                        end
-                    else
-                        local rx=root.Position.X+math.random(-40,40)
-                        local rz=root.Position.Z+math.random(-40,40)
-                        F.walkTo(Vector3_new(rx,root.Position.Y,rz))
-                    end
-                else
-                    local map=F.getMap()
-                    local lootFolder=F.findFolder(map,"LootSpawns") or F.findFolder(workspace,"LootSpawns")
-                    if lootFolder and St.Fl.lootCacheMap~=lootFolder then
-                        St.Fl.lootCacheMap=nil
-                        F.clearTable(St.Storage.Loot)
-                        F.buildLootCache(lootFolder)
-                    end
-                    local bestLoot=nil
-                    local lDist=math.huge
-                    for _,entry in pairs(St.Storage.Loot) do
-                        if entry.target and entry.target.Parent and entry.target.Transparency<0.9 and not St.collectedLoot[entry.target] then
-                            local d=(root.Position-entry.target.Position).Magnitude
-                            if d<lDist then lDist=d; bestLoot=entry end
-                        end
-                    end
-                    if bestLoot then
-                        F.walkTo(bestLoot.target.Position)
-                        F.tryTriggerLoot(bestLoot.src)
-                        St.collectedLoot[bestLoot.target]=true
-                        task.wait(0.2)
-                    else
-                        task.wait(1)
-                    end
-                end
-            elseif team=="killer" then
-                local readyExit=F.getReadyExit()
-                if readyExit then
-                    local gatePart=F.resolveGatePart(readyExit)
-                    if gatePart then
-                        F.walkTo(gatePart.Position)
-                        for _,p in ipairs(Sv.Players:GetPlayers()) do
-                            if not F.isKillerPlayer(p) and p.Character then
-                                local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                                if pr and (root.Position-pr.Position).Magnitude<20 then
-                                    local tool=char:FindFirstChildOfClass("Tool")
-                                    if tool then pcall(function() tool:Activate() end) end
-                                end
-                            end
-                        end
-                    end
-                else
-                    local bestSurv=nil
-                    local sDist=math.huge
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if not F.isKillerPlayer(p) and p.Character then
-                            local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                            local ph=p.Character:FindFirstChildOfClass("Humanoid")
-                            if pr and ph and ph.Health>0 and not F.isPlayerDowned(p) then
-                                local d=(root.Position-pr.Position).Magnitude
-                                if d<sDist then sDist=d; bestSurv=pr end
-                            end
-                        end
-                    end
-                    if bestSurv and sDist<80 then
-                        F.walkTo(bestSurv.Position)
-                        if sDist<15 then
-                            local tool=char:FindFirstChildOfClass("Tool")
-                            if tool then pcall(function() tool:Activate() end) end
-                        end
-                    else
-                        local lockers=F.getLockerModels()
-                        if #lockers>0 then
-                            local l=lockers[math.random(1,#lockers)]
-                            local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                            if ok then
-                                F.walkTo(cf.Position)
-                                local tool=char:FindFirstChildOfClass("Tool")
-                                if tool then pcall(function() tool:Activate() end) end
+                                F.walkTo(cf.Position,false)
+                                pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
                                 task.wait(0.5)
                             end
                         else
@@ -2724,7 +2529,6 @@ function F.restartEnabledCommands()
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
     if St.Settings.LegitBot then F.startLegitBot() end
 end
-
 UI.C={
     BG=Color3_fromRGB(10,11,14),
     PANEL=Color3_fromRGB(16,18,23),
