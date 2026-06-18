@@ -149,16 +149,16 @@ end
 
 
 local _ROBLOX_ICONS={
-    ["Heart.png"]="rbxassetid://108571680732230",
-    ["CoINs.png"]="rbxassetid://136782305608562",
-    ["Farm.png"]="rbxassetid://110686780409469",
-    ["setting.png"]="rbxassetid://96621936204864",
-    ["esp.png"]="rbxassetid://108417288747288",
-    ["JXPhoTHO.png"]="rbxassetid://138627690193651",
-    ["Telegram.png"]="rbxassetid://86445606186301",
-    ["Home.png"]="rbxassetid://102444249610138",
-    ["English.jpg"]="rbxassetid://105735635413663",
-    ["Russian.jpg"]="rbxassetid://95543406783515"
+    ["Heart.png"]="rbxthumb://type=Asset&id=108571680732230&w=420&h=420",
+    ["CoINs.png"]="rbxthumb://type=Asset&id=136782305608562&w=420&h=420",
+    ["Farm.png"]="rbxthumb://type=Asset&id=110686780409469&w=420&h=420",
+    ["setting.png"]="rbxthumb://type=Asset&id=96621936204864&w=420&h=420",
+    ["esp.png"]="rbxthumb://type=Asset&id=108417288747288&w=420&h=420",
+    ["JXPhoTHO.png"]="rbxthumb://type=Asset&id=138627690193651&w=420&h=420",
+    ["Telegram.png"]="rbxthumb://type=Asset&id=86445606186301&w=420&h=420",
+    ["Home.png"]="rbxthumb://type=Asset&id=102444249610138&w=420&h=420",
+    ["English.jpg"]="rbxthumb://type=Asset&id=105735635413663&w=420&h=420",
+    ["Russian.jpg"]="rbxthumb://type=Asset&id=95543406783515&w=420&h=420"
 }
 local function setPrivateImage(img,filename)
     pcall(function()
