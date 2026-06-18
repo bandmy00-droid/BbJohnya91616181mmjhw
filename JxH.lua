@@ -1,6 +1,6 @@
 local UPDATE_VERSION = "V6.0"
-local UPDATE_TEXT_EN = "1. New Add Ghost Mode 👻\n2. New Add Hitbox ( Killer ) 🎯\n3. Fix Double Jump When you Down ⏫\n4. Bug Fixed 🛠️\n5. fix Snowman Animation ⛄\n6. UI Color Customization 🎨\n7. More....in 6.0 Version 🚀"
-local UPDATE_TEXT_RU = "1. Добавлен Режим призрака 👻\n2. Добавлен Хитбокс (Убийца) 🎯\n3. Исправлен двойной прыжок в нокауте ⏫\n4. Исправлены ошибки 🛠️\n5. Исправлена анимация снеговика ⛄\n6. Настройка цветов интерфейса 🎨\n7. Больше... в версии 6.0 🚀"
+local UPDATE_TEXT_EN = "1. New Add Ghost Mode \n2. New Add Hitbox ( Killer ) \n3. Fix Double Jump When you Down \n4. Bug Fixed \n5. fix Snowman Animation \n6. UI Color Customization \n7. More....in 6.0 Version "
+local UPDATE_TEXT_RU = "1. Добавлен Режим призрака \n2. Добавлен Хитбокс (Убийца) \n3. Исправлен двойной прыжок в нокауте \n4. Исправлены ошибки \n5. Исправлена анимация снеговика \n6. Настройка цветов интерфейса \n7. Больше... в версии 6.0 "
 local math_floor=math.floor
 local math_max=math.max
 local math_min=math.min
@@ -50,7 +50,17 @@ local St={
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
     DistSettings={OffsetY=-4.5,Font=Enum.Font.GothamBold},
     LivesSettings={OffsetY=7,OffsetX=0,HeartSize=10},
-    OriginalFog={FogEnd=Sv.Lighting.FogEnd,FogStart=Sv.Lighting.FogStart},
+    OriginalFog={
+        FogEnd=Sv.Lighting.FogEnd,
+        FogStart=Sv.Lighting.FogStart,
+        Ambient=Sv.Lighting.Ambient,
+        OutdoorAmbient=Sv.Lighting.OutdoorAmbient,
+        ColorShift_Bottom=Sv.Lighting.ColorShift_Bottom,
+        ColorShift_Top=Sv.Lighting.ColorShift_Top,
+        ClockTime=Sv.Lighting.ClockTime,
+        Brightness=Sv.Lighting.Brightness,
+        GlobalShadows=Sv.Lighting.GlobalShadows
+    },
     OriginalAtmosphere={},
     OriginalAnims={},
     Connections={Jump=nil,State=nil},
@@ -205,6 +215,7 @@ local function _fetchIcon(fn)
     if dlOk and type(data)=="string" and #data>50 then
         pcall(writefile,rootPath,data)
         pcall(writefile,subPath,data)
+        task.wait(0.1)
         local asset
         for _=1,4 do
             task.wait(0.25)
@@ -212,13 +223,9 @@ local function _fetchIcon(fn)
             if asset then break end
         end
         if asset then St._imageCache[fn]=asset; return asset end
-        local fbUrl=St.PUBLIC_REPO_URL..fn
-        St._imageCache[fn]=fbUrl
-        return fbUrl
+        return nil
     end
-    local fbUrl=St.PUBLIC_REPO_URL..fn
-    St._imageCache[fn]=fbUrl
-    return fbUrl
+    return nil
 end
 local function _preloadFromDisk()
     for _,fn in ipairs(St.ALL_ASSETS) do
@@ -1755,6 +1762,13 @@ function F.enableFogRemoval()
     local function _clearAll()
         Sv.Lighting.FogEnd=1e9; Sv.Lighting.FogStart=1e9-100
         Sv.Lighting.ExposureCompensation=0
+        Sv.Lighting.Ambient=Color3_new(1,1,1)
+        Sv.Lighting.OutdoorAmbient=Color3_new(1,1,1)
+        Sv.Lighting.ColorShift_Bottom=Color3_new(0,0,0)
+        Sv.Lighting.ColorShift_Top=Color3_new(0,0,0)
+        Sv.Lighting.ClockTime=14
+        Sv.Lighting.Brightness=2
+        Sv.Lighting.GlobalShadows=false
         for _,obj in ipairs(Sv.Lighting:GetChildren()) do
             if obj:IsA("Atmosphere") then obj.Density=0; obj.Haze=0; obj.Glare=0; obj.Offset=0 end
             _clearColorEffect(obj)
@@ -1795,6 +1809,13 @@ end
 function F.disableFogRemoval()
     St.Settings.RemoveFog=false; St.Fl.fogLoopRunning=false
     Sv.Lighting.FogEnd=St.OriginalFog.FogEnd; Sv.Lighting.FogStart=St.OriginalFog.FogStart
+    Sv.Lighting.Ambient=St.OriginalFog.Ambient
+    Sv.Lighting.OutdoorAmbient=St.OriginalFog.OutdoorAmbient
+    Sv.Lighting.ColorShift_Bottom=St.OriginalFog.ColorShift_Bottom
+    Sv.Lighting.ColorShift_Top=St.OriginalFog.ColorShift_Top
+    Sv.Lighting.ClockTime=St.OriginalFog.ClockTime
+    Sv.Lighting.Brightness=St.OriginalFog.Brightness
+    Sv.Lighting.GlobalShadows=St.OriginalFog.GlobalShadows
     for obj,vals in pairs(St.OriginalAtmosphere) do
         if obj and obj.Parent then pcall(function() obj.Density=vals.Density; obj.Haze=vals.Haze end) end
     end
@@ -3265,7 +3286,7 @@ local function buildUI()
             guiDragging=true
             guiDragInput=input
             guiDragStart=input.Position
-            guiStartPos=MainFrame.Position
+            guiStartPos=MainFrame.AbsolutePosition + (MainFrame.AbsoluteSize / 2)
         end
     end)
     Sv.UserInputService.InputEnded:Connect(function(input)
@@ -3281,9 +3302,9 @@ local function buildUI()
         local vp=workspace.CurrentCamera.ViewportSize
         local szW=MainFrame.AbsoluteSize.X/2
         local szH=MainFrame.AbsoluteSize.Y/2
-        local newX=math.clamp(guiStartPos.X.Offset+delta.X,szW,vp.X-szW)
-        local newY=math.clamp(guiStartPos.Y.Offset+delta.Y,szH,vp.Y-szH)
-        MainFrame.Position=UDim2_new(guiStartPos.X.Scale,newX,guiStartPos.Y.Scale,newY)
+        local newX=math.clamp(guiStartPos.X+delta.X,szW,vp.X-szW)
+        local newY=math.clamp(guiStartPos.Y+delta.Y,szH,vp.Y-szH)
+        MainFrame.Position=UDim2_new(0,newX,0,newY)
     end)
     local BADGE_H=20
     local TeamBadge=Instance_new("TextLabel"); TeamBadge.Parent=MainFrame
@@ -4487,6 +4508,7 @@ local function buildUI()
     end)
 
 local function showChangelog(parentGui)
+        if not St.Settings.ShowAds then return end
         local isRU=St.Language=="RU"
         local titleTxt=isRU and "Что нового?" or "What's new?"
         
@@ -4619,7 +4641,6 @@ local function _wipeExecutorWorkspaceOnce()
     pcall(writefile,_EXEC_WORKSPACE_MARKER,"1")
 end
 local function init()
-    -- [إصلاح] حماية الهوك بالكامل لمنع كراش الـ PlayerModule الذي يسبب المشي اللانهائي
     pcall(function()
         local _callerWorks=false
         pcall(function() _callerWorks=(checkcaller()==true) end)
@@ -4784,7 +4805,6 @@ local function init()
         end
     end)
     Sv.LocalPlayer.CharacterAdded:Connect(function(char)
-        -- [إصلاح] تم إزالة كود إجبار الكاميرا لأنه يكسر كاميرا اللعبة الأصلية ويجمد الشاشة
         F.stopAllActionsInternal()
         St.Fl.farmPriority=0; St.Fl.farmPaused=false; St.Fl.farmStoppedForRound=false
         St.Fl.reviveSelfPaused=false; St.Fl.escapeCheckTimer=0
