@@ -105,7 +105,6 @@ local St={
     canJump2=false,
     jumpCount=0,
     farmLoopId=0,
-    
     lootEspTimer=0,
     livesTrackTimer=0,
     reviveLoopId=0,
@@ -137,7 +136,7 @@ local _langRefs={}
 local _T
 local _LR
 local _applyLang
-function F.clearTable(t) for k in pairs(t) do t[k]=nil end end
+function F.clearTable(t) if type(t)=="table" then for k in pairs(t) do t[k]=nil end end end
 function F.safeDestroy(obj)
     if obj and obj.Parent then pcall(function() obj:Destroy() end) end
 end
@@ -2281,7 +2280,7 @@ function F.stopAllActionsInternal()
     St.Fl.killAllRunning=false
     if St.Fl.ghostActive then F.toggleGhostMode(false) end
     if St.Cn.hitbox then St.Cn.hitbox:Disconnect(); St.Cn.hitbox=nil end
-    end
+end
 function F.startShiftLock()
     St.Settings.ShiftLock=true
     if St.Cn.shiftLock then St.Cn.shiftLock:Disconnect() end
@@ -2325,7 +2324,7 @@ function F.restartEnabledCommands()
     if St.Settings.ExitESP then F.updateExitESP() end
     if St.Settings.SnowAnimation then F.applySnowAnims(Sv.LocalPlayer.Character) end
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
-    end
+end
 UI.C={
     BG=Color3_fromRGB(10,11,14),
     PANEL=Color3_fromRGB(16,18,23),
@@ -2507,7 +2506,6 @@ function UI.makeToggle(parent,sName,labelTxt,onCb,langKey)
     end
     tBtn.MouseButton1Click:Connect(function()
         local locked={AutoFarmLoot=true,KillerSafety=true,AutoEscape=true,AutoRevive=true,AutoSelfRevive=true,GhostMode=true,_killAll=true}
-
         St.Settings[sName]=not St.Settings[sName]; local on=St.Settings[sName]
         setVisual(on); if onCb then onCb(on) end; task.defer(F.saveSettings)
     end)
@@ -4561,7 +4559,6 @@ local function _wipeExecutorWorkspaceOnce()
     end)
     F.clearTable(St._imageCache)
     F.clearTable(St._imgByFile)
-    F.clearTable(_dlGuard)
     pcall(writefile,_EXEC_WORKSPACE_MARKER,"1")
 end
 local function init()
