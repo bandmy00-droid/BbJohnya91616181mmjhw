@@ -1,6 +1,6 @@
 local UPDATE_VERSION = "V6.0"
-local UPDATE_TEXT_EN = "1. New Add Ghost Mode \n2. New Add Hitbox ( Killer ) \n3. Fix Double Jump When you Down \n4. Bug Fixed \n5. fix Snowman Animation \n6. UI Color Customization \n7. More....in 6.0 Version "
-local UPDATE_TEXT_RU = "1. Добавлен Режим призрака \n2. Добавлен Хитбокс (Убийца) \n3. Исправлен двойной прыжок в нокауте \n4. Исправлены ошибки \n5. Исправлена анимация снеговика \n6. Настройка цветов интерфейса \n7. Больше... в версии 6.0 "
+local UPDATE_TEXT_EN = "1. 🔒 <b>New Feature:</b> Shift Lock \n2. 📺 <b>New Feature:</b> Show Ads (Present) \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
+local UPDATE_TEXT_RU = "1. 🔒 <b>Новая функция:</b> Shift Lock \n2. 📺 <b>Новая функция:</b> Показ рекламы \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
 local math_floor=math.floor
 local math_max=math.max
 local math_min=math.min
@@ -42,7 +42,7 @@ local St={
         DoubleJump=true,InfiniteJump=false,Noclip=false,SpeedEnabled=false,
         FlyEnabled=false,GhostMode=false,Hitbox=false,
         AutoFarmLoot=false,KillerSafety=false,AutoEscape=false,
-        RemoveFog=true,AntiAFK=false,_killAll=false,
+        RemoveFog=false,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
         SnowAnimation=false,AntiVoid=false,
         ThemeHue=0,FpsBoost=false,ShowAds=true,ShiftLock=false,
@@ -72,7 +72,7 @@ local St={
         reviveSelfPaused=false,farmPaused=false,farmStoppedForRound=false,
         escapeTriggeredExternal=false,escapeCheckTimer=0,farmPriority=0,
         killerSafetyDist=50,currentSpeed=16,flySpeed=50,hitboxRadius=15,
-        lastFarmPos=nil,lastFarmPosTime=0,uiScale=1.0,winSize=1.0,hudSize=1.0,bgTransparency=0.9,
+        lastFarmPos=nil,lastFarmPosTime=0,uiScale=1.0,winSize=1.0,hudSize=1.0,bgTransparency=0.5,
         lootCacheMap=nil,currentMapInstance=nil,originalMasterVolume=Sv.SoundService.AmbientReverb,
         currentTab="home",
         _reviveStarting=false,_escapeWaitStart=nil,isTeleporting=false,
@@ -97,7 +97,7 @@ local St={
     _lockerCache={models={},time=0},
     _snowTracks={},
     _snowHrConn=nil,
-    SAVE_FILE="JxH_settingsVv6.0.json",
+    SAVE_FILE="JxH_settingsVv6.1.json",
     _lastSaveTime=0,
     _sliderDrags={},
     _sliderDragId=nil,
@@ -4461,8 +4461,8 @@ local function buildUI()
 local function showChangelog(parentGui)
         if not St.Settings.ShowAds then return end
         local isRU=St.Language=="RU"
-        local titleTxt=isRU and "Что нового?" or "What's new?"
-        
+        local titleTxt=isRU and "✨ Что нового в V6.0 ✨" or "✨ What's New in V6.0 ✨"
+
         local rawText = isRU and UPDATE_TEXT_RU or UPDATE_TEXT_EN
         local items = {}
         for line in rawText:gmatch("[^\r\n]+") do
@@ -4473,94 +4473,101 @@ local function showChangelog(parentGui)
         overlay.Size=UDim2_new(1,0,1,0); overlay.BackgroundColor3=Color3_new(0,0,0)
         overlay.BackgroundTransparency=1; overlay.ZIndex=1000; overlay.Active=true
         overlay.Parent=parentGui
-        
-        local modalHeight = 80 + (#items * 22) + 40
+
+        local modalW = 320
+        local itemHeight = 24
+        local modalHeight = 90 + (#items * itemHeight) + 50
         local modal=Instance_new("Frame")
-        modal.Size=UDim2_new(0,270,0,modalHeight)
-        modal.Position=UDim2_new(0.5,-135,0.5,-(modalHeight/2) + 20)
-        modal.BackgroundColor3=Color3_fromRGB(9,11,18); modal.BackgroundTransparency=1
+        modal.Size=UDim2_new(0,modalW,0,modalHeight)
+        modal.Position=UDim2_new(0.5,-modalW/2,0.5,-(modalHeight/2) + 20)
+        modal.BackgroundColor3=UI.C.PANEL; modal.BackgroundTransparency=1
+        UI.registerTheme(modal,"PANEL","BackgroundColor3")
         modal.ZIndex=1001; modal.ClipsDescendants=true; modal.Parent=overlay
-        
-        local mCrn=Instance_new("UICorner"); mCrn.CornerRadius=UDim_new(0,14); mCrn.Parent=modal
+
+        local mCrn=Instance_new("UICorner"); mCrn.CornerRadius=UDim_new(0,12); mCrn.Parent=modal
         local mStr=Instance_new("UIStroke"); mStr.Parent=modal
-        mStr.Color=UI.C.ACCENT; mStr.Thickness=1; mStr.Transparency=1
+        mStr.Color=UI.C.ACCENT; mStr.Thickness=1.5; mStr.Transparency=1
         UI.registerTheme(mStr,"ACCENT","Color")
-        
+
         local closeBtn=Instance_new("TextButton")
-        closeBtn.Size=UDim2_new(0,25,0,25); closeBtn.Position=UDim2_new(1,-31,0,6)
-        closeBtn.BackgroundColor3=Color3_fromRGB(160,28,40); closeBtn.BackgroundTransparency=0.22
-        closeBtn.Text="X"; closeBtn.TextColor3=Color3_new(1,1,1)
-        closeBtn.Font=Enum.Font.GothamBlack; closeBtn.TextSize=11
+        closeBtn.Size=UDim2_new(0,26,0,26); closeBtn.Position=UDim2_new(1,-34,0,10)
+        closeBtn.BackgroundColor3=UI.C.OFF; closeBtn.BackgroundTransparency=0
+        UI.registerTheme(closeBtn,"OFF","BackgroundColor3")
+        closeBtn.Text="✕"; closeBtn.TextColor3=Color3_fromRGB(200,200,200)
+        closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=14
         closeBtn.BorderSizePixel=0; closeBtn.ZIndex=1002; closeBtn.Parent=modal
-        local cbCrn=Instance_new("UICorner"); cbCrn.CornerRadius=UDim_new(0,7); cbCrn.Parent=closeBtn
-        
+        local cbCrn=Instance_new("UICorner"); cbCrn.CornerRadius=UDim_new(1,0); cbCrn.Parent=closeBtn
+        UI.applyHover(closeBtn,"OFF","DANGER")
+
         local titleLbl=Instance_new("TextLabel")
-        titleLbl.Size=UDim2_new(1,-44,0,28); titleLbl.Position=UDim2_new(0,10,0,10)
+        titleLbl.Size=UDim2_new(1,-80,0,30); titleLbl.Position=UDim2_new(0,40,0,10)
         titleLbl.BackgroundTransparency=1; titleLbl.Text=titleTxt
         titleLbl.TextColor3=Color3_new(1,1,1); titleLbl.Font=Enum.Font.GothamBlack
-        titleLbl.TextSize=15; titleLbl.TextXAlignment=Enum.TextXAlignment.Center
+        titleLbl.TextSize=16; titleLbl.TextXAlignment=Enum.TextXAlignment.Center
         titleLbl.ZIndex=1002; titleLbl.Parent=modal
         UI.registerTheme(titleLbl,"TEXT","TextColor3")
-        
-        local sep1=Instance_new("TextLabel")
-        sep1.Size=UDim2_new(1,-20,0,11); sep1.Position=UDim2_new(0,10,0,44)
-        sep1.BackgroundTransparency=1; sep1.Text="–––––––––––––––"
-        sep1.TextColor3=Color3_fromRGB(80,80,110); sep1.Font=Enum.Font.Gotham
-        sep1.TextSize=11; sep1.TextXAlignment=Enum.TextXAlignment.Center
+
+        local sep1=Instance_new("Frame")
+        sep1.Size=UDim2_new(1,-40,0,1); sep1.Position=UDim2_new(0,20,0,48)
+        sep1.BackgroundColor3=UI.C.DIV; sep1.BorderSizePixel=0
+        UI.registerTheme(sep1,"DIV","BackgroundColor3")
         sep1.ZIndex=1002; sep1.Parent=modal
-        
-        local iy=61
+
+        local iy=58
         for _,txt in ipairs(items) do
             local row=Instance_new("TextLabel")
-            row.Size=UDim2_new(1,-22,0,21); row.Position=UDim2_new(0,14,0,iy)
-            row.BackgroundTransparency=1; row.Text=txt
-            row.TextColor3=Color3_fromRGB(215,215,235); row.Font=Enum.Font.GothamSemibold
-            row.TextSize=12; row.TextXAlignment=Enum.TextXAlignment.Left
+            row.Size=UDim2_new(1,-40,0,itemHeight); row.Position=UDim2_new(0,20,0,iy)
+            row.BackgroundTransparency=1; row.Text=txt; row.RichText=true
+            row.TextColor3=Color3_fromRGB(230,230,230); row.Font=Enum.Font.GothamMedium
+            row.TextSize=13; row.TextXAlignment=Enum.TextXAlignment.Left
             row.ZIndex=1002; row.Parent=modal
-            iy=iy+22
+            iy=iy+itemHeight
         end
-        
-        local sep2=Instance_new("TextLabel")
-        sep2.Size=UDim2_new(1,-20,0,11); sep2.Position=UDim2_new(0,10,0,iy+5)
-        sep2.BackgroundTransparency=1; sep2.Text="–––––––––––––––"
-        sep2.TextColor3=Color3_fromRGB(80,80,110); sep2.Font=Enum.Font.Gotham
-        sep2.TextSize=11; sep2.TextXAlignment=Enum.TextXAlignment.Center
+
+        local sep2=Instance_new("Frame")
+        sep2.Size=UDim2_new(1,-40,0,1); sep2.Position=UDim2_new(0,20,0,iy+8)
+        sep2.BackgroundColor3=UI.C.DIV; sep2.BorderSizePixel=0
+        UI.registerTheme(sep2,"DIV","BackgroundColor3")
         sep2.ZIndex=1002; sep2.Parent=modal
-        
-        local tgy=iy+24
+
+        local tgy=iy+18
         local tgIcon=Instance_new("ImageLabel")
-        tgIcon.Size=UDim2_new(0,24,0,24); tgIcon.Position=UDim2_new(0,12,0,tgy)
+        tgIcon.Size=UDim2_new(0,28,0,28); tgIcon.Position=UDim2_new(0,20,0,tgy)
         tgIcon.BackgroundTransparency=1; tgIcon.ScaleType=Enum.ScaleType.Fit
         tgIcon.ZIndex=1002; tgIcon.Parent=modal
         setPrivateImage(tgIcon,"Telegram.png")
-        
+
         local tgLinkLbl=Instance_new("TextLabel")
-        tgLinkLbl.Size=UDim2_new(1,-116,0,22); tgLinkLbl.Position=UDim2_new(0,42,0,tgy+1)
+        tgLinkLbl.Size=UDim2_new(1,-130,0,28); tgLinkLbl.Position=UDim2_new(0,56,0,tgy)
         tgLinkLbl.BackgroundTransparency=1; tgLinkLbl.Text="t.me/JohnyX_STK"
-        tgLinkLbl.TextColor3=Color3_fromRGB(90,175,255); tgLinkLbl.Font=Enum.Font.GothamSemibold
-        tgLinkLbl.TextSize=11; tgLinkLbl.TextXAlignment=Enum.TextXAlignment.Left
+        tgLinkLbl.TextColor3=UI.C.ACCENT; tgLinkLbl.Font=Enum.Font.GothamBold
+        UI.registerTheme(tgLinkLbl,"ACCENT","TextColor3")
+        tgLinkLbl.TextSize=12; tgLinkLbl.TextXAlignment=Enum.TextXAlignment.Left
         tgLinkLbl.ZIndex=1002; tgLinkLbl.Parent=modal
-        
+
         local copyBtn=Instance_new("TextButton")
-        copyBtn.Size=UDim2_new(0,44,0,21); copyBtn.Position=UDim2_new(1,-54,0,tgy+2)
-        copyBtn.BackgroundColor3=Color3_fromRGB(0,100,180); copyBtn.BackgroundTransparency=0.22
-        copyBtn.Text="Copy"; copyBtn.TextColor3=Color3_new(1,1,1)
-        copyBtn.Font=Enum.Font.GothamBold; copyBtn.TextSize=10
+        copyBtn.Size=UDim2_new(0,60,0,26); copyBtn.Position=UDim2_new(1,-80,0,tgy+1)
+        copyBtn.BackgroundColor3=UI.C.ACCENT; copyBtn.BackgroundTransparency=0.1
+        UI.registerTheme(copyBtn,"ACCENT","BackgroundColor3")
+        copyBtn.Text="COPY"; copyBtn.TextColor3=Color3_new(1,1,1)
+        copyBtn.Font=Enum.Font.GothamBold; copyBtn.TextSize=11
         copyBtn.BorderSizePixel=0; copyBtn.ZIndex=1002; copyBtn.Parent=modal
         local cpCrn=Instance_new("UICorner"); cpCrn.CornerRadius=UDim_new(0,6); cpCrn.Parent=copyBtn
+        UI.applyHover(copyBtn,"ACCENT","ACCDIM")
+        
         copyBtn.MouseButton1Click:Connect(function()
             pcall(function() setclipboard("https://t.me/JohnyX_STK") end)
             UI.showToast(isRU and "  Ссылка скопирована!" or "  Link copied!",parentGui)
         end)
-        
+
         local ts=Sv.TweenService
-        local POS_S=UDim2_new(0.5,-135,0.5,-(modalHeight/2) + 20)
-        local POS_E=UDim2_new(0.5,-135,0.5,-(modalHeight/2))
+        local POS_S=UDim2_new(0.5,-modalW/2,0.5,-(modalHeight/2) + 20)
+        local POS_E=UDim2_new(0.5,-modalW/2,0.5,-(modalHeight/2))
         local tiIn=TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
-        ts:Create(overlay,tiIn,{BackgroundTransparency=0.7}):Play()
-        ts:Create(modal,tiIn,{BackgroundTransparency=0.08,Position=POS_E}):Play()
-        ts:Create(mStr,tiIn,{Transparency=0.45}):Play()
-        
+        ts:Create(overlay,tiIn,{BackgroundTransparency=1}):Play()
+        ts:Create(modal,tiIn,{BackgroundTransparency=0.05,Position=POS_E}):Play()
+        ts:Create(mStr,tiIn,{Transparency=0.2}):Play()
+
         closeBtn.MouseButton1Click:Connect(function()
             local tiOut=TweenInfo.new(0.28,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
             ts:Create(overlay,tiOut,{BackgroundTransparency=1}):Play()
