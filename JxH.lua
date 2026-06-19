@@ -45,7 +45,7 @@ local St={
         RemoveFog=true,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
         SnowAnimation=false,AntiVoid=false,
-        ThemeHue=0,FpsBoost=false,ShowAds=true,LegitBot=false
+        ThemeHue=0,FpsBoost=false,ShowAds=true,ShiftLock=false,
     },
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
     DistSettings={OffsetY=-4.5,Font=Enum.Font.GothamBold},
@@ -105,7 +105,7 @@ local St={
     canJump2=false,
     jumpCount=0,
     farmLoopId=0,
-    legitBotLoopId=0,
+    
     lootEspTimer=0,
     livesTrackTimer=0,
     reviveLoopId=0,
@@ -2266,558 +2266,6 @@ function F.serverHop()
 end
 local PFS=game:GetService("PathfindingService")
 local VU=game:GetService("VirtualUser")
-function F.walkTo(targetPos,isUrgent)
-    local char=Sv.LocalPlayer.Character
-    local root=char and char:FindFirstChild("HumanoidRootPart")
-    local hum=char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum or hum.Health<=0 then
-        return 2
-    end
-    local path=PFS:CreatePath({AgentRadius=2.5,AgentHeight=5.5,AgentCanJump=true,WaypointSpacing=3})
-    local success=pcall(function() path:ComputeAsync(root.Position,targetPos) end)
-    if not success or path.Status~=Enum.PathStatus.Success then
-        pcall(function() hum:MoveTo(targetPos) end)
-        local waitTime=isUrgent and 2.0 or 4.0
-        local stuckCheck=0
-        local lastPos=root.Position
-        local startTime=tick()
-        while tick()-startTime<waitTime do
-            task.wait(0.5)
-            if not St.Fl.legitBotRunning then return 2 end
-            if F.isPlayerDowned(Sv.LocalPlayer) then return 2 end
-            local dist2D=(Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(targetPos.X,0,targetPos.Z)).Magnitude
-            if dist2D<5 then return 0 end
-            local moved=(root.Position-lastPos).Magnitude
-            if moved<0.5 then
-                stuckCheck=stuckCheck+1
-                if stuckCheck>=2 then
-                    pcall(function() hum.Jump=true end)
-                    local side=root.CFrame.RightVector*(math.random()>0.5 and 5 or -5)
-                    pcall(function() hum:MoveTo(root.Position+side) end)
-                    task.wait(0.3)
-                    pcall(function() hum:MoveTo(targetPos) end)
-                    stuckCheck=0
-                end
-            else
-                stuckCheck=0
-            end
-            lastPos=root.Position
-        end
-        return 1
-    end
-    local waypoints=path:GetWaypoints()
-    if #waypoints<2 then
-        pcall(function() hum:MoveTo(targetPos) end)
-        return 1
-    end
-    for i=2,#waypoints do
-        if not St.Fl.legitBotRunning then return 2 end
-        if F.isPlayerDowned(Sv.LocalPlayer) then return 2 end
-        local wp=waypoints[i]
-        local pos=wp.Position
-        if not isUrgent then
-            pos=pos+Vector3_new(math.random(-6,6)*0.1,0,math.random(-6,6)*0.1)
-        end
-        if wp.Action==Enum.PathWaypointAction.Jump then
-            pcall(function() hum.Jump=true end)
-        end
-        pcall(function() hum:MoveTo(pos) end)
-        local stuckTimer=0
-        local lastPos=root.Position
-        local startMove=tick()
-        while true do
-            task.wait(0.25)
-            if not St.Fl.legitBotRunning then return 2 end
-            if F.isPlayerDowned(Sv.LocalPlayer) then return 2 end
-            local dist2D=(Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(pos.X,0,pos.Z)).Magnitude
-            if dist2D<4 then
-                break
-            end
-            local moved=(root.Position-lastPos).Magnitude
-            if moved<0.3 then
-                stuckTimer=stuckTimer+0.25
-                if stuckTimer>=1.0 then
-                    pcall(function() hum.Jump=true end)
-                    task.wait(0.1)
-                    local side=root.CFrame.RightVector*(math.random()>0.5 and 4 or -4)
-                    pcall(function() hum:MoveTo(root.Position+side) end)
-                    task.wait(0.3)
-                    pcall(function() hum:MoveTo(pos) end)
-                    stuckTimer=0.3
-                end
-                if stuckTimer>=2.5 then
-                    if isUrgent and (root.Position-targetPos).Magnitude>15 then
-                        local dir=(targetPos-root.Position).Unit
-                        F.ultraFastTeleport(root.Position+dir*6+Vector3_new(0,2,0))
-                        return 1
-                    end
-                    return 2
-                end
-            else
-                stuckTimer=0
-            end
-            lastPos=root.Position
-            if not isUrgent then
-                for _,p in ipairs(Sv.Players:GetPlayers()) do
-                    if F.isKillerPlayer(p) and p.Character then
-                        local kr=p.Character:FindFirstChild("HumanoidRootPart")
-                        if kr then
-                            local d=(root.Position-kr.Position).Magnitude
-                            if d<40 then
-                                return 3
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return 0
-end
-function F.stopLegitBot()
-    St.Fl.legitBotRunning=false
-    St.Settings.LegitBot=false
-    if St.toggleRefs["LegitBot"] then St.toggleRefs["LegitBot"](false) end
-end
-function F.startLegitBot()
-    if St.Fl.legitBotRunning then return end
-    St.Fl.legitBotRunning=true
-    St.Settings.LegitBot=true
-    St.legitBotLoopId=St.legitBotLoopId+1
-    local myId=St.legitBotLoopId
-    local savedAutoEscape=St.Settings.AutoEscape
-    local savedAutoFarm=St.Settings.AutoFarmLoot
-    local savedGhost=St.Settings.GhostMode
-    local savedAutoRevive=St.Settings.AutoRevive
-    local savedAutoSelfRevive=St.Settings.AutoSelfRevive
-    task.spawn(function()
-        local lobbySpots={
-            Vector3_new(-23.960,260.859,15.252),
-            Vector3_new(-2.476,260.859,13.519),
-            Vector3_new(-13.949,261.913,-9.931),
-            Vector3_new(-31.876,260.859,8.389)
-        }
-        local currentLobbySpot=lobbySpots[math.random(1,#lobbySpots)]
-        local state="IDLE"
-        local lastPos=nil
-        local stuckFrames=0
-        local inLocker=false
-        local lockerWaitStart=0
-        local lastLootPos=nil
-        local lootRepeatCount=0
-        local lastStateChange=0
-        while St.Fl.legitBotRunning and St.legitBotLoopId==myId do
-            task.wait(0.5)
-            if not St.Fl.legitBotRunning or St.legitBotLoopId~=myId then
-                break
-            end
-            if St.Settings.AutoEscape and not savedAutoEscape then
-                break
-            end
-            if St.Settings.AutoFarmLoot and not savedAutoFarm then
-                break
-            end
-            if St.Settings.GhostMode and not savedGhost then
-                break
-            end
-            if St.Settings.AutoRevive and not savedAutoRevive then
-                break
-            end
-            if St.Settings.AutoSelfRevive and not savedAutoSelfRevive then
-                break
-            end
-            local team=F.getMyTeamType()
-            local char=Sv.LocalPlayer.Character
-            local root=char and char:FindFirstChild("HumanoidRootPart")
-            local hum=char and char:FindFirstChildOfClass("Humanoid")
-            if not root or not hum or hum.Health<=0 then
-                state="IDLE"
-            else
-                if lastPos then
-                    local dx=math.abs(root.Position.X-lastPos.X)
-                    local dz=math.abs(root.Position.Z-lastPos.Z)
-                    if dx<0.1 and dz<0.1 then
-                        stuckFrames=stuckFrames+1
-                        if stuckFrames>=4 then
-                            pcall(function() hum.Jump=true end)
-                            local side=root.CFrame.RightVector*(math.random()>0.5 and 6 or -6)
-                            local back=root.CFrame.LookVector*(-3)
-                            pcall(function() hum:MoveTo(root.Position+side+back) end)
-                            task.wait(0.4)
-                            stuckFrames=0
-                        end
-                    else
-                        stuckFrames=0
-                    end
-                end
-                lastPos=root.Position
-                if hum and St.Settings.SpeedEnabled==false then
-                    pcall(function() hum.WalkSpeed=16+math.random(-1,2) end)
-                end
-            end
-            if not root or not hum or hum.Health<=0 then
-            elseif team=="lobby" then
-                state="LOBBY"
-                local d=(root.Position-currentLobbySpot).Magnitude
-                if d>6 then
-                    F.walkTo(currentLobbySpot,false)
-                else
-                    if math.random()>0.8 then
-                        pcall(function() hum.Jump=true end)
-                    end
-                end
-            elseif team=="survivor" then
-                if F.isPlayerDowned(Sv.LocalPlayer) then
-                    state="DOWNED"
-                    local nearestAlive=nil
-                    local nearestDist=math.huge
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if p~=Sv.LocalPlayer then
-                            local tObj=p.Team
-                            if tObj then
-                                local t=tObj.Name:lower()
-                                if t:find("survivor") or t:find("innocent") or t:find("hider") then
-                                    if not F.isPlayerDowned(p) then
-                                        local pr=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                                        local ph=p.Character and p.Character:FindFirstChildOfClass("Humanoid")
-                                        if pr and ph and ph.Health>0 then
-                                            local inLocker=false
-                                            local lockers=F.getLockerModels()
-                                            for _,l in ipairs(lockers) do
-                                                local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                                                if ok and (pr.Position-cf.Position).Magnitude<6 then
-                                                    inLocker=true
-                                                    break
-                                                end
-                                            end
-                                            if not inLocker then
-                                                local d=(root.Position-pr.Position).Magnitude
-                                                if d<nearestDist then
-                                                    nearestDist=d
-                                                    nearestAlive=pr
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    if nearestAlive and nearestAlive.Parent then
-                        F.walkTo(nearestAlive.Position+Vector3_new(2,0,0),true)
-                    else
-                        local wallDir=root.CFrame.LookVector*(-1)
-                        pcall(function() hum:MoveTo(root.Position+wallDir*4) end)
-                    end
-                else
-                    local kRoot=nil
-                    local kDist=math.huge
-                    local kVel=nil
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if F.isKillerPlayer(p) and p.Character then
-                            local kr=p.Character:FindFirstChild("HumanoidRootPart")
-                            if kr then
-                                local d=(root.Position-kr.Position).Magnitude
-                                if d<kDist then
-                                    kDist=d
-                                    kRoot=kr
-                                    kVel=kr.Velocity
-                                end
-                            end
-                        end
-                    end
-                    local readyExit=F.getReadyExit()
-                    if readyExit and not inLocker then
-                        state="ESCAPING"
-                        lastStateChange=tick()
-                        local gatePart=F.resolveGatePart(readyExit)
-                        if gatePart then
-                            if kRoot and kDist<80 then
-                                local lockers=F.getLockerModels()
-                                local bestLocker=nil
-                                local bestDist=math.huge
-                                for _,l in ipairs(lockers) do
-                                    local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                                    if ok then
-                                        local d=(root.Position-cf.Position).Magnitude
-                                        if d<bestDist then
-                                            bestDist=d
-                                            bestLocker=l
-                                        end
-                                    end
-                                end
-                                if bestLocker and bestDist<40 then
-                                    local ok,cf=pcall(function() return bestLocker:GetBoundingBox() end)
-                                    if ok then
-                                        if bestDist<10 then
-                                            pcall(function() hum:MoveTo(cf.Position) end)
-                                            task.wait(0.5)
-                                            inLocker=true
-                                            lockerWaitStart=tick()
-                                        else
-                                            local r=F.walkTo(cf.Position,true)
-                                            if r==0 or r==1 then
-                                                pcall(function() hum:MoveTo(cf.Position) end)
-                                                task.wait(0.5)
-                                                inLocker=true
-                                                lockerWaitStart=tick()
-                                            elseif r==3 then
-                                                local runDir=(root.Position-kRoot.Position).Unit
-                                                pcall(function() hum:MoveTo(root.Position+runDir*30) end)
-                                            end
-                                        end
-                                    end
-                                else
-                                    local r=F.walkTo(gatePart.Position,true)
-                                    if r==2 then
-                                        F.ultraFastTeleport(gatePart.Position+Vector3_new(0,3,0))
-                                    end
-                                end
-                            else
-                                local r=F.walkTo(gatePart.Position,true)
-                                if r==2 then
-                                    F.ultraFastTeleport(gatePart.Position+Vector3_new(0,3,0))
-                                end
-                            end
-                        end
-                    elseif inLocker then
-                        state="HIDING"
-                        local shouldExit=false
-                        if not kRoot then
-                            shouldExit=true
-                        else
-                            local d=(root.Position-kRoot.Position).Magnitude
-                            if d>90 then
-                                shouldExit=true
-                            elseif tick()-lockerWaitStart>8 then
-                                shouldExit=true
-                            end
-                        end
-                        if shouldExit then
-                            inLocker=false
-                            local backDir=root.CFrame.LookVector*(-1)
-                            pcall(function() hum:MoveTo(root.Position+backDir*4) end)
-                            task.wait(0.5)
-                        end
-                    elseif kRoot and kDist<=45 then
-                        state="FLEEING"
-                        lastStateChange=tick()
-                        local lockers=F.getLockerModels()
-                        local bestLocker=nil
-                        local bestScore=math.huge
-                        for _,l in ipairs(lockers) do
-                            local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                            if ok then
-                                local d=(root.Position-cf.Position).Magnitude
-                                local kDistToLocker=(kRoot.Position-cf.Position).Magnitude
-                                local score=d-(kDistToLocker*0.3)
-                                if score<bestScore then
-                                    bestScore=score
-                                    bestLocker=l
-                                end
-                            end
-                        end
-                        if bestLocker then
-                            local ok,cf=pcall(function() return bestLocker:GetBoundingBox() end)
-                            if ok then
-                                if bestScore<12 then
-                                    pcall(function() hum:MoveTo(cf.Position) end)
-                                    task.wait(0.5)
-                                    inLocker=true
-                                    lockerWaitStart=tick()
-                                else
-                                    local r=F.walkTo(cf.Position,true)
-                                    if r==0 or r==1 then
-                                        pcall(function() hum:MoveTo(cf.Position) end)
-                                        task.wait(0.5)
-                                        inLocker=true
-                                        lockerWaitStart=tick()
-                                    elseif r==3 then
-                                        local runDir=(root.Position-kRoot.Position).Unit
-                                        pcall(function() hum:MoveTo(root.Position+runDir*30) end)
-                                    end
-                                end
-                            end
-                        else
-                            local runDir=(root.Position-kRoot.Position).Unit
-                            local runPos=root.Position+(runDir*40)
-                            pcall(function() hum:MoveTo(runPos) end)
-                            if math.random()>0.6 then
-                                pcall(function() hum.Jump=true end)
-                            end
-                        end
-                    elseif kRoot and kDist<90 then
-                        state="CAUTIOUS"
-                        lastStateChange=tick()
-                        local runDir=(root.Position-kRoot.Position).Unit
-                        local runPos=root.Position+(runDir*25)
-                        F.walkTo(runPos,false)
-                    else
-                        state="LOOTING"
-                        if tick()-lastStateChange>5 then
-                            lastStateChange=tick()
-                        end
-                        local map=F.getMap()
-                        local lootFolder=F.findFolder(map,"LootSpawns") or F.findFolder(workspace,"LootSpawns")
-                        if lootFolder and St.Fl.lootCacheMap~=lootFolder then
-                            St.Fl.lootCacheMap=nil
-                            F.clearTable(St.Storage.Loot)
-                            F.buildLootCache(lootFolder)
-                        end
-                        local bestLoot=nil
-                        local bestScore=-math.huge
-                        for _,entry in pairs(St.Storage.Loot) do
-                            if entry.target and entry.target.Parent and entry.target.Transparency<0.9 and not St.collectedLoot[entry.target] then
-                                if entry.value and entry.value>=3 then
-                                    local dist=(root.Position-entry.target.Position).Magnitude
-                                    if dist<180 then
-                                        local danger=false
-                                        if kRoot then
-                                            local distToKiller=(entry.target.Position-kRoot.Position).Magnitude
-                                            local distMeToKiller=(root.Position-kRoot.Position).Magnitude
-                                            if distToKiller<40 or distMeToKiller<50 then
-                                                danger=true
-                                            end
-                                            if kVel and kVel.Magnitude>8 then
-                                                local kDir=kVel.Unit
-                                                local toLoot=(entry.target.Position-kRoot.Position).Unit
-                                                if kDir:Dot(toLoot)>0.5 and distToKiller<80 then
-                                                    danger=true
-                                                end
-                                            end
-                                        end
-                                        if not danger then
-                                            local score=(entry.value*10)-(dist*0.4)
-                                            if score>bestScore then
-                                                bestScore=score
-                                                bestLoot=entry
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                        if bestLoot then
-                            if lastLootPos and (bestLoot.target.Position-lastLootPos).Magnitude<2 then
-                                lootRepeatCount=lootRepeatCount+1
-                                if lootRepeatCount>=3 then
-                                    St.collectedLoot[bestLoot.target]=true
-                                    lootRepeatCount=0
-                                    lastLootPos=nil
-                                end
-                            else
-                                lootRepeatCount=0
-                                lastLootPos=bestLoot.target.Position
-                            end
-                            local r=F.walkTo(bestLoot.target.Position,false)
-                            if r==0 then
-                                task.wait(0.2)
-                                F.tryTriggerLoot(bestLoot.src)
-                                task.wait(0.3)
-                                if not bestLoot.target.Parent or bestLoot.target.Transparency>=0.9 then
-                                    St.collectedLoot[bestLoot.target]=true
-                                    lastLootPos=nil
-                                    lootRepeatCount=0
-                                end
-                            elseif r==3 then
-                                lastLootPos=nil
-                            end
-                        else
-                            local otherSurv=nil
-                            local otherDist=math.huge
-                            for _,p in ipairs(Sv.Players:GetPlayers()) do
-                                if p~=Sv.LocalPlayer then
-                                    local tObj=p.Team
-                                    if tObj then
-                                        local t=tObj.Name:lower()
-                                        if t:find("survivor") or t:find("innocent") or t:find("hider") then
-                                            if not F.isPlayerDowned(p) then
-                                                local pr=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                                                if pr then
-                                                    local d=(root.Position-pr.Position).Magnitude
-                                                    if d<otherDist and d>10 then
-                                                        otherDist=d
-                                                        otherSurv=pr
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                            if otherSurv and otherSurv.Parent then
-                                F.walkTo(otherSurv.Position+Vector3_new(math.random(-5,5),0,math.random(-5,5)),false)
-                            else
-                                local wander=root.Position+Vector3_new(math.random(-20,20),0,math.random(-20,20))
-                                F.walkTo(wander,false)
-                            end
-                        end
-                    end
-                end
-            elseif team=="killer" then
-                state="KILLER"
-                local readyExit=F.getReadyExit()
-                if readyExit then
-                    local gatePart=F.resolveGatePart(readyExit)
-                    if gatePart then
-                        F.walkTo(gatePart.Position,true)
-                        pcall(function()
-                            VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                            task.wait(0.1)
-                            VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                        end)
-                    end
-                else
-                    local bestSurv=nil
-                    local sDist=math.huge
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if not F.isKillerPlayer(p) and p.Character then
-                            local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                            local ph=p.Character:FindFirstChildOfClass("Humanoid")
-                            if pr and ph and ph.Health>0 and not F.isPlayerDowned(p) then
-                                local d=(root.Position-pr.Position).Magnitude
-                                if d<sDist then
-                                    sDist=d
-                                    bestSurv=pr
-                                end
-                            end
-                        end
-                    end
-                    if bestSurv then
-                        if sDist<15 then
-                            pcall(function() hum:MoveTo(bestSurv.Position) end)
-                            pcall(function()
-                                VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                task.wait(0.1)
-                                VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                            end)
-                            task.wait(0.1)
-                        else
-                            F.walkTo(bestSurv.Position,true)
-                        end
-                    else
-                        local lockers=F.getLockerModels()
-                        if #lockers>0 then
-                            local l=lockers[math.random(1,#lockers)]
-                            local ok,cf=pcall(function() return l:GetBoundingBox() end)
-                            if ok then
-                                F.walkTo(cf.Position,false)
-                                pcall(function()
-                                    VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                    task.wait(0.1)
-                                    VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                end)
-                                task.wait(0.5)
-                            end
-                        else
-                            task.wait(1)
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
 function F.stopAllActionsInternal()
     St.Fl.autoFarmRunning=false
     St.farmLoopId=St.farmLoopId+1
@@ -2833,7 +2281,23 @@ function F.stopAllActionsInternal()
     St.Fl.killAllRunning=false
     if St.Fl.ghostActive then F.toggleGhostMode(false) end
     if St.Cn.hitbox then St.Cn.hitbox:Disconnect(); St.Cn.hitbox=nil end
-    F.stopLegitBot()
+    end
+function F.startShiftLock()
+    St.Settings.ShiftLock=true
+    if St.Cn.shiftLock then St.Cn.shiftLock:Disconnect() end
+    St.Cn.shiftLock=Sv.RunService.RenderStepped:Connect(function()
+        if not St.Settings.ShiftLock then return end
+        pcall(function()
+            Sv.UserInputService.MouseBehavior=Enum.MouseBehavior.LockCenter
+        end)
+    end)
+end
+function F.stopShiftLock()
+    St.Settings.ShiftLock=false
+    if St.Cn.shiftLock then St.Cn.shiftLock:Disconnect(); St.Cn.shiftLock=nil end
+    pcall(function()
+        Sv.UserInputService.MouseBehavior=Enum.MouseBehavior.Default
+    end)
 end
 function F.restartEnabledCommands()
     local now=tick()
@@ -2861,8 +2325,7 @@ function F.restartEnabledCommands()
     if St.Settings.ExitESP then F.updateExitESP() end
     if St.Settings.SnowAnimation then F.applySnowAnims(Sv.LocalPlayer.Character) end
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
-    if St.Settings.LegitBot then F.startLegitBot() end
-end
+    end
 UI.C={
     BG=Color3_fromRGB(10,11,14),
     PANEL=Color3_fromRGB(16,18,23),
@@ -3044,11 +2507,7 @@ function UI.makeToggle(parent,sName,labelTxt,onCb,langKey)
     end
     tBtn.MouseButton1Click:Connect(function()
         local locked={AutoFarmLoot=true,KillerSafety=true,AutoEscape=true,AutoRevive=true,AutoSelfRevive=true,GhostMode=true,_killAll=true}
-        if St.Settings.LegitBot and locked[sName] then
-            local sg=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
-            if sg then UI.showToast("Disable Legit Bot first!",sg) end
-            return
-        end
+
         St.Settings[sName]=not St.Settings[sName]; local on=St.Settings[sName]
         setVisual(on); if onCb then onCb(on) end; task.defer(F.saveSettings)
     end)
@@ -4344,65 +3803,6 @@ local function buildUI()
         end,"tog_coins_disp")
     end
     local function _buildFarm()
-        _LS(farmPage,"LEGIT BOT",true)
-        local legitGrid=UI.makeGridContainer(farmPage)
-        UI.A(farmPage,legitGrid)
-        local function showLegitPrompt(onConfirm)
-            local sg=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
-            local overlay=Instance_new("Frame")
-            overlay.Size=UDim2_new(1,0,1,0); overlay.BackgroundColor3=Color3_new(0,0,0)
-            overlay.BackgroundTransparency=0.5; overlay.ZIndex=100; overlay.Active=true; overlay.Parent=sg
-            local dialog=Instance_new("Frame")
-            dialog.Size=UDim2_new(0,260,0,130); dialog.Position=UDim2_new(0.5,-130,0.5,-65)
-            dialog.BackgroundColor3=UI.C.PANEL; UI.registerTheme(dialog,"PANEL","BackgroundColor3")
-            dialog.ZIndex=101; dialog.Parent=overlay
-            local dCrn=Instance_new("UICorner"); dCrn.CornerRadius=UDim_new(0,8); dCrn.Parent=dialog
-            local dStr=Instance_new("UIStroke"); dStr.Color=UI.C.ACCENT; dStr.Thickness=1; dStr.Parent=dialog
-            UI.registerTheme(dStr,"ACCENT","Color")
-            local lbl=Instance_new("TextLabel")
-            lbl.Size=UDim2_new(1,-20,0,60); lbl.Position=UDim2_new(0,10,0,10)
-            lbl.BackgroundTransparency=1; lbl.Text="This system requires disabling all fast farm features and Ghost Mode. Do you agree?"
-            lbl.TextColor3=Color3_new(1,1,1); lbl.TextWrapped=true
-            UI.registerTheme(lbl,"TEXT","TextColor3")
-            lbl.Font=Enum.Font.GothamBold; lbl.TextSize=11; lbl.ZIndex=102; lbl.Parent=dialog
-            local yesBtn=Instance_new("TextButton")
-            yesBtn.Size=UDim2_new(0,100,0,30); yesBtn.Position=UDim2_new(0,20,0,85)
-            yesBtn.BackgroundColor3=UI.C.ACCENT; UI.registerTheme(yesBtn,"ACCENT","BackgroundColor3")
-            yesBtn.Text="Yes"; yesBtn.TextColor3=Color3_new(1,1,1)
-            UI.registerTheme(yesBtn,"TEXT","TextColor3")
-            yesBtn.Font=Enum.Font.GothamBold; yesBtn.TextSize=11; yesBtn.ZIndex=102; yesBtn.Parent=dialog
-            local yCrn=Instance_new("UICorner"); yCrn.CornerRadius=UDim_new(0,6); yCrn.Parent=yesBtn
-            local noBtn=Instance_new("TextButton")
-            noBtn.Size=UDim2_new(0,100,0,30); noBtn.Position=UDim2_new(1,-120,0,85)
-            noBtn.BackgroundColor3=UI.C.OFF; UI.registerTheme(noBtn,"OFF","BackgroundColor3")
-            noBtn.Text="No"; noBtn.TextColor3=Color3_new(1,1,1)
-            UI.registerTheme(noBtn,"TEXT","TextColor3")
-            noBtn.Font=Enum.Font.GothamBold; noBtn.TextSize=11; noBtn.ZIndex=102; noBtn.Parent=dialog
-            local nCrn=Instance_new("UICorner"); nCrn.CornerRadius=UDim_new(0,6); nCrn.Parent=noBtn
-            yesBtn.MouseButton1Click:Connect(function() overlay:Destroy(); onConfirm(true) end)
-            noBtn.MouseButton1Click:Connect(function() overlay:Destroy(); onConfirm(false) end)
-        end
-        UI.makeToggle(legitGrid,"LegitBot","Legit Auto Bot",function(on)
-            if on then
-                showLegitPrompt(function(agreed)
-                    if agreed then
-                        F.setToggleState("AutoFarmLoot",false)
-                        F.setToggleState("AutoEscape",false)
-                        F.setToggleState("KillerSafety",false)
-                        F.setToggleState("AutoRevive",false)
-                        F.setToggleState("AutoSelfRevive",false)
-                        F.setToggleState("GhostMode",false)
-                        F.setToggleState("_killAll",false)
-                        F.startLegitBot()
-                    else
-                        F.setToggleState("LegitBot",false)
-                    end
-                end)
-            else
-                F.stopLegitBot()
-            end
-        end)
-        UI.A(farmPage,UI.makeDivider(farmPage))
         _LS(farmPage,"sec_autofarm")
         local fGrid1=UI.makeGridContainer(farmPage)
         UI.A(farmPage,fGrid1)
@@ -4683,6 +4083,9 @@ local function buildUI()
         UI.makeToggle(mGrid,"InfiniteJump",_T("tog_inf_jump"),function(on) if on then F.startInfiniteJump() else F.stopInfiniteJump() end end,"tog_inf_jump")
         UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end end,"tog_noclip")
         UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) end,"tog_ghost_mode")
+        UI.makeToggle(mGrid,"ShiftLock","Shift Lock",function(on)
+            if on then F.startShiftLock() else F.stopShiftLock() end
+        end)
         local subFly,sllFly=UI.makeSubContainer(settPage)
         UI.makeToggle(mGrid,"FlyEnabled",_T("tog_fly"),function(on)
             subFly.Visible=on; subFly.Size=UDim2_new(1,0,0,on and sllFly.AbsoluteContentSize.Y or 0)
@@ -5276,6 +4679,7 @@ local function init()
         if St.Settings.ExitESP then F.updateExitESP() end
         if St.Settings.ShowCoins and St.CoinsHUD_ref then St.CoinsHUD_ref.Visible=true end
         if St.Settings.SnowAnimation then F.applySnowAnims(Sv.LocalPlayer.Character) end
+        if St.Settings.ShiftLock then F.startShiftLock() end
         if F.getMyTeamType()~="lobby" then task.wait(0.5); F.restartEnabledCommands() end
     end)
     local function updateTeamBadge(teamType)
@@ -5352,6 +4756,7 @@ local function init()
         if St.Settings.InfiniteJump then F.startInfiniteJump() end
         if St.Settings.SnowAnimation then F.applySnowAnims(char) end
         if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
+        if St.Settings.ShiftLock then F.startShiftLock() end
         _startVoidSafetyBG()
         F.updateLootESP()
     end)
