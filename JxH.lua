@@ -699,37 +699,47 @@ function F.createLootBillboard(target,value)
 end
 function F.getLootValue(obj)
     if St.lootValueCache[obj]~=nil then return St.lootValueCache[obj] end
-    local function cache(v) St.lootValueCache[obj]=v; return v end
+    local function cache(v)
+        if v==20 then v=nil end
+        St.lootValueCache[obj]=v
+        return v
+    end
     local attr=obj:GetAttribute("Value") or obj:GetAttribute("Amount")
     if attr then
         local val=nil
         if type(attr)=="number" then val=attr
         elseif type(attr)=="string" then val=tonumber(attr) end
-        if val then
-            if val==20 then return cache(nil) end
-            return cache(val)
-        end
+        if val then return cache(val) end
     end
     local descs=obj:GetDescendants()
     local fallback=nil
     for _,c in ipairs(descs) do
-        if c:IsA("ProximityPrompt") or c:IsA("ClickDetector") then
+        if c:IsA("ProximityPrompt") then
             local at=c:GetAttribute("ActionText")
             if at and type(at)=="string" then
-                local n=at:match("%+(%d+)"); if n then fallback=tonumber(n) break end
+                local n=at:match("%+(%d+)")
+                if n then fallback=tonumber(n) break end
+            end
+            local txt=c.ActionText.." "..c.ObjectText
+            local n=txt:match("%+(%d+)") or txt:match("(%d+)%s*[Cc]oin") or txt:match("(%d+)%s*[Gg]old")
+            if n then fallback=tonumber(n) break end
+        elseif c:IsA("ClickDetector") then
+            local at=c:GetAttribute("ActionText")
+            if at and type(at)=="string" then
+                local n=at:match("%+(%d+)")
+                if n then fallback=tonumber(n) break end
             end
         elseif c:IsA("TextLabel") or c:IsA("TextButton") then
-            local n=c.Text:match("%+(%d+)"); if n then fallback=tonumber(n) break end
+            local n=c.Text:match("%+(%d+)")
+            if n then fallback=tonumber(n) break end
         elseif (c:IsA("IntValue") or c:IsA("NumberValue")) and not fallback then
             fallback=c.Value
         elseif c:IsA("StringValue") and not fallback then
-            local n=tonumber(c.Value); if n then fallback=n end
+            local n=tonumber(c.Value)
+            if n then fallback=n end
         end
     end
-    if fallback then
-        if fallback==20 then return cache(nil) end
-        return cache(fallback)
-    end
+    if fallback then return cache(fallback) end
     if obj:IsDescendantOf(workspace) then
         local map=F.getMap()
         local lootFolder=F.findFolder(map,"LootSpawns") or F.findFolder(workspace,"LootSpawns")
@@ -737,7 +747,7 @@ function F.getLootValue(obj)
             return cache(1)
         end
     end
-    return nil
+    return cache(nil)
 end
 function F.buildLootCache(lootFolder)
     if St.Fl.lootCacheMap==lootFolder then return end
@@ -748,17 +758,17 @@ function F.buildLootCache(lootFolder)
     St.Fl.lootCacheMap=lootFolder
     local function processObj(obj)
         local target=nil
-        if obj:IsA("Model") then
-            target=obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        if obj:IsA("Model") or obj:IsA("Folder") then
+            target=(obj:IsA("Model") and obj.PrimaryPart) or obj:FindFirstChildWhichIsA("BasePart",true)
         elseif obj:IsA("BasePart") then
-            if obj.Parent and obj.Parent:IsA("Model") and obj.Parent~=lootFolder then
+            if obj.Parent and (obj.Parent:IsA("Model") or obj.Parent:IsA("Folder")) and obj.Parent~=lootFolder then
                 return
             end
             target=obj
         end
         if target and not St.collectedLoot[target] then
             local val=F.getLootValue(obj)
-            if val then
+            if val and val~=20 then
                 if St.Storage.Loot[target] and St.Storage.Loot[target].bgui then
                     F.safeDestroy(St.Storage.Loot[target].bgui)
                 end
@@ -773,23 +783,23 @@ function F.buildLootCache(lootFolder)
     local count=0
     for i=1,#descs do
         local obj=descs[i]
-        if obj:IsA("Model") or obj:IsA("BasePart") then
+        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
             processObj(obj)
             count=count+1
             if count%50==0 then task.wait() end
         end
     end
     St.Cn.lootAdded=lootFolder.DescendantAdded:Connect(function(obj)
-        if obj:IsA("Model") or obj:IsA("BasePart") then
+        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
             task.wait(0.1)
             if obj and obj.Parent then processObj(obj) end
         end
     end)
     St.Cn.lootRemoved=lootFolder.DescendantRemoving:Connect(function(obj)
-        if obj:IsA("Model") or obj:IsA("BasePart") then
+        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
             local target=obj
-            if obj:IsA("Model") then
-                target=obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+            if obj:IsA("Model") or obj:IsA("Folder") then
+                target=(obj:IsA("Model") and obj.PrimaryPart) or obj:FindFirstChildWhichIsA("BasePart",true)
             end
             if target and St.Storage.Loot[target] then
                 if St.Storage.Loot[target].bgui then
@@ -2288,6 +2298,16 @@ function F.startShiftLock()
         if not St.Settings.ShiftLock then return end
         pcall(function()
             Sv.UserInputService.MouseBehavior=Enum.MouseBehavior.LockCenter
+            local char=Sv.LocalPlayer.Character
+            local hum=char and char:FindFirstChildOfClass("Humanoid")
+            local root=char and char:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.Health>0 then
+                hum.CameraOffset=Vector3_new(1.75,0,0)
+                hum.AutoRotate=false
+                local cam=workspace.CurrentCamera
+                local look=cam.CFrame.LookVector
+                root.CFrame=CFrame_new(root.Position,root.Position+Vector3_new(look.X,0,look.Z))
+            end
         end)
     end)
 end
@@ -2296,6 +2316,12 @@ function F.stopShiftLock()
     if St.Cn.shiftLock then St.Cn.shiftLock:Disconnect(); St.Cn.shiftLock=nil end
     pcall(function()
         Sv.UserInputService.MouseBehavior=Enum.MouseBehavior.Default
+        local char=Sv.LocalPlayer.Character
+        local hum=char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.CameraOffset=Vector3_new(0,0,0)
+            hum.AutoRotate=true
+        end
     end)
 end
 function F.restartEnabledCommands()
@@ -2326,27 +2352,27 @@ function F.restartEnabledCommands()
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
 end
 UI.C={
-    BG=Color3_fromRGB(10,11,14),
-    PANEL=Color3_fromRGB(16,18,23),
-    ROW=Color3_fromRGB(23,26,33),
-    ACCENT=Color3_fromRGB(85,130,255),
-    ACCDIM=Color3_fromRGB(55,90,190),
-    TEXT=Color3_fromRGB(250,250,255),
-    SUBTEXT=Color3_fromRGB(140,150,170),
-    DIV=Color3_fromRGB(34,38,48),
-    OFF=Color3_fromRGB(30,33,42),
-    RED=Color3_fromRGB(245,70,70),
-    REDDIM=Color3_fromRGB(180,45,45),
+    BG=Color3_fromRGB(12,12,12),
+    PANEL=Color3_fromRGB(20,20,20),
+    ROW=Color3_fromRGB(30,30,30),
+    ACCENT=Color3_fromRGB(0,120,255),
+    ACCDIM=Color3_fromRGB(0,80,200),
+    TEXT=Color3_fromRGB(255,255,255),
+    SUBTEXT=Color3_fromRGB(170,170,170),
+    DIV=Color3_fromRGB(45,45,45),
+    OFF=Color3_fromRGB(40,40,40),
+    RED=Color3_fromRGB(255,40,40),
+    REDDIM=Color3_fromRGB(180,20,20),
     GLASS=Color3_fromRGB(255,255,255),
-    GOOD=Color3_fromRGB(45,215,120),
-    WARN=Color3_fromRGB(250,175,50),
-    DANGER=Color3_fromRGB(245,70,70)
+    GOOD=Color3_fromRGB(20,220,80),
+    WARN=Color3_fromRGB(255,170,0),
+    DANGER=Color3_fromRGB(255,40,40)
 }
 function F.applyTheme(hue)
     hue=math.clamp(hue or 0,0,1)
     St.Settings.ThemeHue=hue
-    UI.C.ACCENT=Color3.fromHSV(hue,0.65,1)
-    UI.C.ACCDIM=Color3.fromHSV(hue,0.75,0.75)
+    UI.C.ACCENT=Color3.fromHSV(hue,0.95,1)
+    UI.C.ACCDIM=Color3.fromHSV(hue,0.95,0.7)
     local ti=TweenInfo.new(0.4,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
     for _,data in ipairs(St.UIRefs.Themed) do
         if data.inst and data.inst.Parent then
@@ -3205,7 +3231,7 @@ local function buildUI()
             guiDragging=true
             guiDragInput=input
             guiDragStart=input.Position
-            guiStartPos=MainFrame.AbsolutePosition + (MainFrame.AbsoluteSize / 2)
+            guiStartPos=MainFrame.Position
         end
     end)
     Sv.UserInputService.InputEnded:Connect(function(input)
@@ -3218,11 +3244,14 @@ local function buildUI()
         if not guiDragging then return end
         if input.UserInputType~=Enum.UserInputType.MouseMovement and input.UserInputType~=Enum.UserInputType.Touch then return end
         local delta=input.Position-guiDragStart
+        local scale=St.Fl.uiScale or 1
+        local newX=guiStartPos.X.Offset+(delta.X/scale)
+        local newY=guiStartPos.Y.Offset+(delta.Y/scale)
         local vp=workspace.CurrentCamera.ViewportSize
-        local szW=MainFrame.AbsoluteSize.X/2
-        local szH=MainFrame.AbsoluteSize.Y/2
-        local newX=math.clamp(guiStartPos.X+delta.X,szW,vp.X-szW)
-        local newY=math.clamp(guiStartPos.Y+delta.Y,szH,vp.Y-szH)
+        local limitX=vp.X/scale
+        local limitY=vp.Y/scale
+        newX=math.clamp(newX,0,limitX)
+        newY=math.clamp(newY,0,limitY)
         MainFrame.Position=UDim2_new(0,newX,0,newY)
     end)
     local BADGE_H=20
@@ -4045,7 +4074,7 @@ local function buildUI()
             local tTCrn=Instance_new("UICorner"); tTCrn.Parent=tTrack; tTCrn.CornerRadius=UDim_new(1,0)
             local tGrad=Instance_new("UIGradient"); tGrad.Parent=tTrack
             local colors={}
-            for i=0,14 do table.insert(colors,ColorSequenceKeypoint.new(i/14,Color3.fromHSV(i/14,0.75,0.95))) end
+            for i=0,14 do table.insert(colors,ColorSequenceKeypoint.new(i/14,Color3.fromHSV(i/14,0.95,1))) end
             tGrad.Color=ColorSequence.new(colors)
             local tKnob=Instance_new("Frame"); tKnob.Parent=tTrack
             tKnob.Size=UDim2_new(0,16,0,16); tKnob.Position=UDim2_new(St.Settings.ThemeHue,-8,0.5,-8)
@@ -4582,68 +4611,6 @@ local function init()
     buildUI()
     _downloadMissing()
     task.wait(0.2)
-    if St.Settings.ShowAds then
-        task.spawn(function()
-            task.wait(0.8)
-            local sg=Instance_new("ScreenGui")
-            sg.Name="JxH_Intro"; sg.ResetOnSpawn=false; sg.DisplayOrder=20
-            pcall(function() sg.Parent=Sv.CoreGui end)
-            if not sg.Parent then pcall(function() sg.Parent=Sv.LocalPlayer:WaitForChild("PlayerGui") end) end
-            local overlay=Instance_new("Frame")
-            overlay.Size=UDim2_new(1,0,1,0); overlay.BackgroundColor3=Color3_new(0,0,0)
-            overlay.BackgroundTransparency=0.45; overlay.BorderSizePixel=0; overlay.ZIndex=500; overlay.Parent=sg
-            local card=Instance_new("Frame")
-            card.Size=UDim2_new(0,300,0,236); card.Position=UDim2_new(0.5,-150,0.5,-118)
-            card.BackgroundColor3=Color3_fromRGB(18,20,38); card.BorderSizePixel=0; card.ZIndex=501; card.Parent=overlay
-            local crn=Instance_new("UICorner"); crn.Parent=card; crn.CornerRadius=UDim_new(0,12)
-            local tBar=Instance_new("Frame")
-            tBar.Size=UDim2_new(1,0,0,38); tBar.BackgroundColor3=Color3_fromRGB(35,100,220)
-            tBar.BorderSizePixel=0; tBar.ZIndex=502; tBar.Parent=card
-            local tCrn=Instance_new("UICorner"); tCrn.Parent=tBar; tCrn.CornerRadius=UDim_new(0,12)
-            local tFix=Instance_new("Frame"); tFix.Size=UDim2_new(1,0,0,12); tFix.Position=UDim2_new(0,0,1,-12)
-            tFix.BackgroundColor3=Color3_fromRGB(35,100,220); tFix.BorderSizePixel=0; tFix.ZIndex=502; tFix.Parent=tBar
-            local tLbl=Instance_new("TextLabel")
-            tLbl.Size=UDim2_new(1,-44,1,0); tLbl.Position=UDim2_new(0,14,0,0)
-            tLbl.BackgroundTransparency=1; tLbl.Text="JohnyX  V6.0"
-            tLbl.TextColor3=Color3_new(1,1,1); tLbl.Font=Enum.Font.GothamBold
-            tLbl.TextSize=14; tLbl.TextXAlignment=Enum.TextXAlignment.Left; tLbl.ZIndex=503; tLbl.Parent=tBar
-            local xBtn=Instance_new("TextButton")
-            xBtn.Size=UDim2_new(0,28,0,28); xBtn.Position=UDim2_new(1,-34,0.5,-14)
-            xBtn.BackgroundColor3=Color3_fromRGB(55,60,95); xBtn.Text="✕"
-            xBtn.TextColor3=Color3_new(1,1,1); xBtn.Font=Enum.Font.GothamBold
-            xBtn.TextSize=13; xBtn.BorderSizePixel=0; xBtn.ZIndex=503; xBtn.Parent=tBar
-            local xCrn=Instance_new("UICorner"); xCrn.Parent=xBtn; xCrn.CornerRadius=UDim_new(0,6)
-            local subLbl=Instance_new("TextLabel")
-            subLbl.Size=UDim2_new(1,-20,0,18); subLbl.Position=UDim2_new(0,10,0,46)
-            subLbl.BackgroundTransparency=1; subLbl.Text="✦ ما الجديد في هذا الإصدار"
-            subLbl.TextColor3=Color3_fromRGB(110,175,255); subLbl.Font=Enum.Font.GothamSemibold
-            subLbl.TextSize=11; subLbl.TextXAlignment=Enum.TextXAlignment.Left; subLbl.ZIndex=502; subLbl.Parent=card
-            local items={"• FPS Boost — تحسين الأداء للأجهزة الضعيفة","• Snowman Animation — إعادة تشغيل تلقائية كل 10s","• Remove Fog — إزالة تأثيرات القاتل الكاملة","• إصلاح سحب الواجهة على الموبايل","• دعم Delta  و  Arceus X Neo"}
-            for i,txt in ipairs(items) do
-                local lbl=Instance_new("TextLabel")
-                lbl.Size=UDim2_new(1,-16,0,20); lbl.Position=UDim2_new(0,8,0,68+(i-1)*22)
-                lbl.BackgroundTransparency=1; lbl.Text=txt
-                lbl.TextColor3=Color3_fromRGB(195,205,225); lbl.Font=Enum.Font.Gotham
-                lbl.TextSize=10; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=502; lbl.Parent=card
-            end
-            local cntLbl=Instance_new("TextLabel")
-            cntLbl.Size=UDim2_new(1,-16,0,16); cntLbl.Position=UDim2_new(0,8,1,-24)
-            cntLbl.BackgroundTransparency=1; cntLbl.TextColor3=Color3_fromRGB(70,80,120)
-            cntLbl.Font=Enum.Font.Gotham; cntLbl.TextSize=10
-            cntLbl.TextXAlignment=Enum.TextXAlignment.Center; cntLbl.ZIndex=502; cntLbl.Parent=card
-            local function _closeIntro() pcall(function() sg:Destroy() end) end
-            xBtn.MouseButton1Click:Connect(_closeIntro)
-            overlay.InputBegan:Connect(function(inp)
-                if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then _closeIntro() end
-            end)
-            for i=5,1,-1 do
-                if not sg or not sg.Parent then return end
-                pcall(function() cntLbl.Text="يُغلق تلقائياً خلال "..i.." ثواني" end)
-                task.wait(1)
-            end
-            _closeIntro()
-        end)
-    end
     _startVoidSafetyBG()
     if St.Settings.DoubleJump then F.setupDoubleJump() end
     if St._savedBtnPos and St.MainBtn_ref and St.MainBtn_ref.Parent then
