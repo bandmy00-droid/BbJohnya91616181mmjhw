@@ -1,4 +1,4 @@
-local UPDATE_VERSION = "V6.0"
+local UPDATE_VERSION = "V6.1"
 local UPDATE_TEXT_EN = "1. 🔒 <b>New Feature:</b> Shift Lock \n2. 📺 <b>New Feature:</b> Show Ads (Present) \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
 local UPDATE_TEXT_RU = "1. 🔒 <b>Новая функция:</b> Shift Lock \n2. 📺 <b>Новая функция:</b> Показ рекламы \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
 local math_floor=math.floor
@@ -97,7 +97,7 @@ local St={
     _lockerCache={models={},time=0},
     _snowTracks={},
     _snowHrConn=nil,
-    SAVE_FILE="JxH_settingsVv6.1.json",
+    SAVE_FILE="JxH_settingsV6.1.json",
     _lastSaveTime=0,
     _sliderDrags={},
     _sliderDragId=nil,
@@ -2763,7 +2763,7 @@ local _LANG={
         home_tab="Home", esp_tab="ESP", farm_tab="Farm", sett_tab="Settings",
         player_info="PLAYER INFO",
         credits="JohnyX Script",
-        credits_sub="by @G_p0z  •  v6.0",
+        credits_sub="by @G_p0z  •  v6.1",
         motto="We are not the only ones, but we are the best",
         fps_lbl="FPS", ping_lbl="Ping",
         status_ok="Status: Undetected",
@@ -2784,7 +2784,7 @@ local _LANG={
         uptime="Uptime", ping_card="Ping",
         farm_success="Collected", farm_fail="Errors",
         farm_escapes="Escapes", farm_coins="Coins",
-        toast_started="Script Loaded  v6.0",
+        toast_started="Script Loaded  v6.1",
         toast_farm_on="Auto Farm: ON",
         toast_farm_off="Auto Farm: OFF",
         toast_rejoin="Rejoining...",
@@ -2813,7 +2813,7 @@ local _LANG={
         home_tab="Главная", esp_tab="ЕСП", farm_tab="Фарм", sett_tab="Настройки",
         player_info="ИГРОК",
         credits="JohnyX Script",
-        credits_sub="от @G_p0z  •  v6.0",
+        credits_sub="от @G_p0z  •  v6.1",
         motto="Мы не единственные, но мы лучшие",
         fps_lbl="FPS", ping_lbl="Пинг",
         status_ok="Статус: Не обнаружен",
@@ -2834,7 +2834,7 @@ local _LANG={
         uptime="Время работы", ping_card="Пинг",
         farm_success="Собрано", farm_fail="Ошибки",
         farm_escapes="Побеги", farm_coins="Монеты",
-        toast_started="Скрипт загружен  v6.0",
+        toast_started="Скрипт загружен  v6.1",
         toast_farm_on="Автофарм: ВКЛ",
         toast_farm_off="Автофарм: ВЫКЛ",
         toast_rejoin="Переподключение...",
@@ -4461,7 +4461,7 @@ local function buildUI()
 local function showChangelog(parentGui)
         if not St.Settings.ShowAds then return end
         local isRU=St.Language=="RU"
-        local titleTxt=isRU and "✨ Что нового в V6.0 ✨" or "✨ What's New in V6.0 ✨"
+        local titleTxt=isRU and "✨ Что нового в V6.1 ✨" or "✨ What's New in V6.1 ✨"
 
         local rawText = isRU and UPDATE_TEXT_RU or UPDATE_TEXT_EN
         local items = {}
