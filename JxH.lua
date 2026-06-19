@@ -72,7 +72,7 @@ local St={
         reviveSelfPaused=false,farmPaused=false,farmStoppedForRound=false,
         escapeTriggeredExternal=false,escapeCheckTimer=0,farmPriority=0,
         killerSafetyDist=50,currentSpeed=16,flySpeed=50,hitboxRadius=15,
-        lastFarmPos=nil,lastFarmPosTime=0,uiScale=1.0,winSize=1.0,hudSize=1.0,bgTransparency=0.85,
+        lastFarmPos=nil,lastFarmPosTime=0,uiScale=1.0,winSize=1.0,hudSize=1.0,bgTransparency=0.9,
         lootCacheMap=nil,currentMapInstance=nil,originalMasterVolume=Sv.SoundService.AmbientReverb,
         currentTab="home",
         _reviveStarting=false,_escapeWaitStart=nil,isTeleporting=false,
@@ -2271,9 +2271,13 @@ function F.walkTo(targetPos,isUrgent)
     local root=char and char:FindFirstChild("HumanoidRootPart")
     local hum=char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum or hum.Health<=0 then return false end
-    local path=PFS:CreatePath({AgentRadius=3,AgentHeight=6,AgentCanJump=true,WaypointSpacing=4})
+    local path=PFS:CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true,WaypointSpacing=2})
     local s,e=pcall(function() path:ComputeAsync(root.Position,targetPos) end)
     if not s or path.Status~=Enum.PathStatus.Success then
+        -- Fallback: split distance and try direct MoveTo
+        local midPos = root.Position:Lerp(targetPos, 0.5) + Vector3_new(0, 2, 0)
+        pcall(function() hum:MoveTo(midPos) end)
+        task.wait(0.3)
         pcall(function() hum:MoveTo(targetPos) end)
         task.wait(0.5)
         return false
@@ -2284,30 +2288,51 @@ function F.walkTo(targetPos,isUrgent)
         local wp=wps[i]
         local pos=wp.Position
         if not isUrgent then
-            pos=pos+Vector3_new((math.random()-0.5)*2.4,0,(math.random()-0.5)*2.4)
+            pos=pos+Vector3_new(math.random(-8,8)*0.1,0,math.random(-8,8)*0.1)
         end
         if wp.Action==Enum.PathWaypointAction.Jump then pcall(function() hum.Jump=true end) end
         pcall(function() hum:MoveTo(pos) end)
         local stuck=0
         local lastP=root.Position
+        local jumpAttempted=false
         while true do
-            local dt=0.08+math.random()*0.05
-            task.wait(dt)
+            task.wait(0.1)
             if not St.Fl.legitBotRunning or F.isPlayerDowned(Sv.LocalPlayer) then return false end
             local d=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(pos.X,0,pos.Z)
             if d.Magnitude<4.5 then break end
-            stuck=stuck+dt
-            if stuck>1.2 then
+            stuck=stuck+0.1
+            if stuck>1.0 then
                 local moved=Vector3_new(root.Position.X,0,root.Position.Z)-Vector3_new(lastP.X,0,lastP.Z)
                 if moved.Magnitude<0.5 then
-                    pcall(function() hum.Jump=true; hum:MoveTo(pos+Vector3_new(math.random(-4,4),0,math.random(-4,4))) end)
-                    stuck=0
+                    -- Stuck! Try jump + sideways avoidance
+                    pcall(function() hum.Jump=true end)
+                    task.wait(0.1)
+                    local avoidDir
+                    if (targetPos-root.Position).Magnitude > 5 then
+                        avoidDir = (targetPos-root.Position).Unit
+                    else
+                        avoidDir = root.CFrame.LookVector
+                    end
+                    -- Perpendicular direction to avoid wall
+                    local sideDir = Vector3_new(-avoidDir.Z, 0, avoidDir.X)
+                    if math.random() > 0.5 then sideDir = -sideDir end
+                    local avoidPos = root.Position + sideDir * 6 + Vector3_new(0, 0, 0)
+                    pcall(function() hum:MoveTo(avoidPos) end)
+                    task.wait(0.3)
+                    pcall(function() hum:MoveTo(pos) end)
+                    stuck = 0.5
+                    jumpAttempted = true
                 end
                 lastP=root.Position
             end
-            if stuck>3 then return false end
+            if stuck>3.5 then
+                -- Total failure, try micro-teleport if urgent
+                if isUrgent and (root.Position-pos).Magnitude > 10 then
+                    F.ultraFastTeleport(root.Position + (pos-root.Position).Unit * 8)
+                end
+                return false
+            end
         end
-        if not isUrgent and math.random()<0.08 then task.wait(0.1+math.random()*0.15) end
     end
     return true
 end
@@ -2330,59 +2355,24 @@ function F.startLegitBot()
             Vector3_new(-31.876,260.859,8.389)
         }
         local currentLobbySpot=lobbySpots[math.random(1,#lobbySpots)]
-        local patrolIdx=1
-        local espByBot=false
-        local lastJump=0
         while St.Fl.legitBotRunning and St.legitBotLoopId==myId do
-            task.wait(0.05+math.random()*0.1)
+            task.wait(0.1)
             local team=F.getMyTeamType()
             local char=Sv.LocalPlayer.Character
             local root=char and char:FindFirstChild("HumanoidRootPart")
             local hum=char and char:FindFirstChildOfClass("Humanoid")
-            if not root or not hum or hum.Health<=0 then continue end
+            if not root or not hum or hum.Health<=0 or F.isPlayerDowned(Sv.LocalPlayer) then continue end
             if team=="lobby" then
                 local d=(root.Position-currentLobbySpot).Magnitude
                 if d>5 then
                     F.walkTo(currentLobbySpot,true)
                 else
-                    local now=tick()
-                    if now-lastJump>3+math.random()*5 and math.random()>0.65 then
-                        pcall(function() hum.Jump=true end)
-                        lastJump=now
-                    end
-                    task.wait(0.8+math.random()*1.5)
-                    currentLobbySpot=lobbySpots[math.random(1,#lobbySpots)]
+                    if math.random()>0.95 then pcall(function() hum.Jump=true end) end
+                    task.wait(1)
                 end
             elseif team=="survivor" then
-                if F.isPlayerDowned(Sv.LocalPlayer) then
-                    local nearRoot,nearDist=nil,math.huge
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if p~=Sv.LocalPlayer then
-                            local t=p.Team
-                            if t then
-                                local tn=t.Name:lower()
-                                if tn:find("survivor") or tn:find("innocent") or tn:find("hider") then
-                                    if not F.isPlayerDowned(p) then
-                                        local pr=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                                        local ph=p.Character and p.Character:FindFirstChildOfClass("Humanoid")
-                                        if pr and ph and ph.Health>0 then
-                                            local d=(root.Position-pr.Position).Magnitude
-                                            if d<nearDist then nearDist=d; nearRoot=pr end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    if nearRoot and nearRoot.Parent then
-                        pcall(function() hum:MoveTo(nearRoot.Position+Vector3_new((math.random()-0.5)*3,0,(math.random()-0.5)*3)) end)
-                        task.wait(0.3+math.random()*0.2)
-                    else
-                        task.wait(1+math.random())
-                    end
-                    continue
-                end
-                local kRoot,kDist=nil,math.huge
+                local kRoot=nil
+                local kDist=math.huge
                 for _,p in ipairs(Sv.Players:GetPlayers()) do
                     if F.isKillerPlayer(p) and p.Character then
                         local kr=p.Character:FindFirstChild("HumanoidRootPart")
@@ -2392,21 +2382,13 @@ function F.startLegitBot()
                         end
                     end
                 end
-                if kRoot and kDist<45 then
-                    local dx=root.Position.X-kRoot.Position.X
-                    local dz=root.Position.Z-kRoot.Position.Z
-                    local mag=math.sqrt(dx*dx+dz*dz)
-                    if mag<0.01 then dx=1;dz=0;mag=1 end
-                    dx=dx/mag;dz=dz/mag
-                    local ang=(math.random()-0.5)*0.7
-                    local ca,sa=math.cos(ang),math.sin(ang)
-                    local dist=30+math.random()*20
-                    pcall(function() hum:MoveTo(root.Position+Vector3_new((dx*ca-dz*sa)*dist,0,(dx*sa+dz*ca)*dist)) end)
-                    if math.random()>0.5 then pcall(function() hum.Jump=true end) end
-                    task.wait(0.1+math.random()*0.12)
-                elseif kRoot and kDist<80 then
+                local readyExit=F.getReadyExit()
+
+                -- NEW: Killer <= 50 studs -> hide in nearest locker immediately
+                if kRoot and kDist <= 50 then
                     local lockers=F.getLockerModels()
-                    local bestLocker,lDist=nil,math.huge
+                    local bestLocker=nil
+                    local lDist=math.huge
                     for _,l in ipairs(lockers) do
                         local ok,cf=pcall(function() return l:GetBoundingBox() end)
                         if ok then
@@ -2417,77 +2399,89 @@ function F.startLegitBot()
                     if bestLocker then
                         local ok,cf=pcall(function() return bestLocker:GetBoundingBox() end)
                         if ok then
-                            if lDist<8 then
+                            if lDist < 12 then
                                 F.teleportInsideLocker(bestLocker)
-                                task.wait(2.5+math.random()*2)
+                                task.wait(3.5) -- wait inside locker until killer leaves
                             else
-                                F.walkTo(cf.Position,true)
-                            end
-                        end
-                    else
-                        local dx=root.Position.X-kRoot.Position.X
-                        local dz=root.Position.Z-kRoot.Position.Z
-                        local mag=math.sqrt(dx*dx+dz*dz)
-                        if mag<0.01 then dx=1;dz=0;mag=1 end
-                        F.walkTo(root.Position+Vector3_new(dx/mag*30,0,dz/mag*30),true)
-                    end
-                else
-                    local readyExit=F.getReadyExit()
-                    if readyExit then
-                        local gatePart=F.resolveGatePart(readyExit)
-                        if gatePart then
-                            if kRoot and (kRoot.Position-gatePart.Position).Magnitude<40 then
-                                local parts=F.getExitParts()
-                                local bestGate,maxD=gatePart,0
-                                for _,p in ipairs(parts) do
-                                    local d=(kRoot.Position-p.Position).Magnitude
-                                    if d>maxD then maxD=d; bestGate=p end
+                                local reached=F.walkTo(cf.Position,true)
+                                if reached and (root.Position-cf.Position).Magnitude < 12 then
+                                    F.teleportInsideLocker(bestLocker)
+                                    task.wait(3.5)
                                 end
-                                F.walkTo(bestGate.Position,true)
-                            else
-                                F.walkTo(gatePart.Position+Vector3_new((math.random()-0.5)*2,0,(math.random()-0.5)*2),true)
                             end
-                            task.wait(0.2+math.random()*0.3)
                         end
                     else
-                        local map=F.getMap()
-                        local lootFolder=F.findFolder(map,"LootSpawns") or F.findFolder(workspace,"LootSpawns")
-                        if lootFolder and St.Fl.lootCacheMap~=lootFolder then
-                            St.Fl.lootCacheMap=nil
-                            F.clearTable(St.Storage.Loot)
-                            F.buildLootCache(lootFolder)
+                        -- No lockers found, run opposite direction
+                        local runDir=(root.Position-kRoot.Position).Unit
+                        local runPos=root.Position+(runDir*50)
+                        pcall(function() hum:MoveTo(runPos) end)
+                        if math.random()>0.7 then pcall(function() hum.Jump=true end) end
+                        task.wait(0.2)
+                    end
+                elseif readyExit then
+                    local gatePart=F.resolveGatePart(readyExit)
+                    if gatePart then
+                        if kRoot and (kRoot.Position-gatePart.Position).Magnitude<40 then
+                            local parts=F.getExitParts()
+                            local bestGate=gatePart
+                            local maxD=0
+                            for _,p in ipairs(parts) do
+                                local d=(kRoot.Position-p.Position).Magnitude
+                                if d>maxD then maxD=d; bestGate=p end
+                            end
+                            F.walkTo(bestGate.Position,true)
+                        else
+                            F.walkTo(gatePart.Position,true)
                         end
-                        local bestLoot,lDist=nil,math.huge
-                        for _,entry in pairs(St.Storage.Loot) do
-                            if entry.target and entry.target.Parent and entry.target.Transparency<0.9 and not St.collectedLoot[entry.target] then
-                                local d=(root.Position-entry.target.Position).Magnitude
-                                if d<lDist then lDist=d; bestLoot=entry end
+                        task.wait(0.5)
+                    end
+                elseif kRoot and kDist < 80 then
+                    -- Killer between 50-80: move opposite then continue loot
+                    local runDir=(root.Position-kRoot.Position).Unit
+                    local runPos=root.Position+(runDir*35)
+                    F.walkTo(runPos,false)
+                    task.wait(0.2)
+                else
+                    -- Killer far (>80) or none: collect highest value loot (>=3), ignore +1
+                    local map=F.getMap()
+                    local lootFolder=F.findFolder(map,"LootSpawns") or F.findFolder(workspace,"LootSpawns")
+                    if lootFolder and St.Fl.lootCacheMap~=lootFolder then
+                        St.Fl.lootCacheMap=nil
+                        F.clearTable(St.Storage.Loot)
+                        F.buildLootCache(lootFolder)
+                    end
+                    local bestLoot=nil
+                    local bestValue=-1
+                    for _,entry in pairs(St.Storage.Loot) do
+                        if entry.target and entry.target.Parent and entry.target.Transparency<0.9 and not St.collectedLoot[entry.target] then
+                            if entry.value and entry.value >= 3 then
+                                if entry.value > bestValue then
+                                    bestValue=entry.value
+                                    bestLoot=entry
+                                end
                             end
                         end
-                        if bestLoot then
-                            local origSpd=hum.WalkSpeed
-                            if not St.Settings.SpeedEnabled then pcall(function() hum.WalkSpeed=14+math.random()*4 end) end
-                            F.walkTo(bestLoot.target.Position+Vector3_new((math.random()-0.5)*1.6,0,(math.random()-0.5)*1.6),false)
-                            if not St.Settings.SpeedEnabled then pcall(function() hum.WalkSpeed=origSpd end) end
-                            F.tryTriggerLoot(bestLoot.src)
-                            St.collectedLoot[bestLoot.target]=true
-                            if bestLoot.bgui then F.safeDestroy(bestLoot.bgui) end
-                            St.Storage.Loot[bestLoot.target]=nil
-                            task.wait(0.1+math.random()*0.3)
-                        else
-                            task.wait(0.8+math.random()*0.6)
-                        end
+                    end
+                    if bestLoot then
+                        F.walkTo(bestLoot.target.Position,false)
+                        F.tryTriggerLoot(bestLoot.src)
+                        St.collectedLoot[bestLoot.target]=true
+                        task.wait(0.2)
+                    else
+                        task.wait(1)
                     end
                 end
             elseif team=="killer" then
                 local readyExit=F.getReadyExit()
                 if readyExit then
-                    if not espByBot and not St.Settings.PlayerESP then
-                        espByBot=true
-                        St.Settings.PlayerESP=true
-                        if St.toggleRefs and St.toggleRefs["PlayerESP"] then St.toggleRefs["PlayerESP"](true) end
+                    local gatePart=F.resolveGatePart(readyExit)
+                    if gatePart then
+                        F.walkTo(gatePart.Position,true)
+                        pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
                     end
-                    local bestSurv,sDist=nil,math.huge
+                else
+                    local bestSurv=nil
+                    local sDist=math.huge
                     for _,p in ipairs(Sv.Players:GetPlayers()) do
                         if not F.isKillerPlayer(p) and p.Character then
                             local pr=p.Character:FindFirstChild("HumanoidRootPart")
@@ -2499,99 +2493,30 @@ function F.startLegitBot()
                         end
                     end
                     if bestSurv then
-                        if sDist<=5 then
+                        if sDist<15 then
                             pcall(function() hum:MoveTo(bestSurv.Position) end)
-                            pcall(function()
-                                VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                task.wait(0.07+math.random()*0.06)
-                                VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                            end)
-                            task.wait(0.08+math.random()*0.07)
+                            pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
+                            task.wait(0.1)
                         else
                             F.walkTo(bestSurv.Position,true)
                         end
                     else
-                        task.wait(0.5)
-                    end
-                else
-                    if espByBot then
-                        espByBot=false
-                        St.Settings.PlayerESP=false
-                        if St.toggleRefs and St.toggleRefs["PlayerESP"] then St.toggleRefs["PlayerESP"](false) end
-                    end
-                    local nearSurv,nearDist=nil,math.huge
-                    for _,p in ipairs(Sv.Players:GetPlayers()) do
-                        if not F.isKillerPlayer(p) and p.Character then
-                            local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                            local ph=p.Character:FindFirstChildOfClass("Humanoid")
-                            if pr and ph and ph.Health>0 and not F.isPlayerDowned(p) then
-                                local d=(root.Position-pr.Position).Magnitude
-                                if d<nearDist then nearDist=d; nearSurv=pr end
-                            end
-                        end
-                    end
-                    if nearSurv and nearDist<=5 then
-                        pcall(function() hum:MoveTo(nearSurv.Position) end)
-                        pcall(function()
-                            VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                            task.wait(0.07+math.random()*0.06)
-                            VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                        end)
-                        task.wait(0.08+math.random()*0.07)
-                    elseif nearSurv and nearDist<60 then
-                        F.walkTo(nearSurv.Position,true)
-                    else
                         local lockers=F.getLockerModels()
                         if #lockers>0 then
-                            if patrolIdx>#lockers then patrolIdx=1 end
-                            local tl=lockers[patrolIdx]
-                            patrolIdx=patrolIdx%#lockers+1
-                            local ok,cf=pcall(function() return tl:GetBoundingBox() end)
+                            local l=lockers[math.random(1,#lockers)]
+                            local ok,cf=pcall(function() return l:GetBoundingBox() end)
                             if ok then
-                                F.walkTo(cf.Position+Vector3_new((math.random()-0.5)*4,0,(math.random()-0.5)*4),false)
-                                if not St.Fl.legitBotRunning then break end
-                                task.wait(0.25+math.random()*0.7)
-                                for _,p in ipairs(Sv.Players:GetPlayers()) do
-                                    if not St.Fl.legitBotRunning then break end
-                                    if not F.isKillerPlayer(p) and p.Character then
-                                        local pr=p.Character:FindFirstChild("HumanoidRootPart")
-                                        if pr and (root.Position-pr.Position).Magnitude<=10 then
-                                            local ph=p.Character:FindFirstChildOfClass("Humanoid")
-                                            if ph and ph.Health>0 and not F.isPlayerDowned(p) then
-                                                F.walkTo(pr.Position,true)
-                                                if (root.Position-pr.Position).Magnitude<=5 then
-                                                    pcall(function()
-                                                        VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                                        task.wait(0.07)
-                                                        VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-                                                    end)
-                                                end
-                                                break
-                                            end
-                                        end
-                                    end
-                                end
+                                F.walkTo(cf.Position,false)
+                                pcall(function() VU:Button1Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame); task.wait(0.1); VU:Button1Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
+                                task.wait(0.5)
                             end
                         else
-                            local map=F.getMap()
-                            if map then
-                                local ok,cf,sz=pcall(function() return map:GetBoundingBox() end)
-                                if ok and sz then
-                                    F.walkTo(Vector3_new(cf.Position.X+(math.random()-0.5)*sz.X*0.8,cf.Position.Y,cf.Position.Z+(math.random()-0.5)*sz.Z*0.8),false)
-                                end
-                            end
-                            task.wait(0.5+math.random())
+                            task.wait(1)
                         end
                     end
                 end
             end
         end
-        if espByBot then
-            espByBot=false
-            St.Settings.PlayerESP=false
-            if St.toggleRefs and St.toggleRefs["PlayerESP"] then St.toggleRefs["PlayerESP"](false) end
-        end
-        St.Fl.legitBotRunning=false
     end)
 end
 function F.stopAllActionsInternal()
