@@ -2773,6 +2773,10 @@ local _LANG={
         hop_lbl="Server Hop", hop_btn="HOP",
         advanced="ADVANCED",
         lang_toggle="Language",
+        sec_char_move="CHARACTER & MOVEMENT",
+        sec_env_util="ENVIRONMENT & UTILITY",
+        sec_ui_cust="UI CUSTOMIZATION",
+        sec_server_links="SERVER & LINKS",
         sec_movement="MOVEMENT", sec_speed="SPEED",
         sec_utility="UTILITY", sec_visuals="VISUALS",
         sec_links="LINKS", sec_uisize="UI SIZE", sec_winsize="WIN SIZE", sec_transparency="TRANSPARENCY",
@@ -2820,6 +2824,50 @@ local _LANG={
         status_detected="Статус: Обнаружен",
         server_tools="СЕРВЕР",
         rejoin_lbl="Переподключение", rejoin_btn="GO",
+        hop_lbl="Сменить сервер", hop_btn="HOP",
+        advanced="ДОПОЛНИТЕЛЬНО",
+        lang_toggle="Язык",
+        sec_char_move="ПЕРСОНАЖ И ДВИЖЕНИЕ",
+        sec_env_util="ОКРУЖЕНИЕ И УТИЛИТЫ",
+        sec_ui_cust="НАСТРОЙКА ИНТЕРФЕЙСА",
+        sec_server_links="СЕРВЕР И ССЫЛКИ",
+        sec_movement="ДВИЖЕНИЕ", sec_speed="СКОРОСТЬ",
+        sec_utility="ФУНКЦИИ", sec_visuals="ВИЗУАЛ",
+        sec_links="ССЫЛКИ", sec_uisize="РАЗМЕР UI", sec_winsize="РАЗМЕР ОКНА", sec_transparency="ПРОЗРАЧНОСТЬ",
+        sec_player="ИГРОКИ", sec_lives="ЖИЗНИ",
+        sec_world="МИР", sec_hud="HUD",
+        sec_autofarm="АВТОФАРМ", sec_revive="ВОСКРЕШЕНИЕ",
+        sec_safety="ЗАЩИТА", sec_killer="УБИЙЦА",
+        close_script="ЗАКРЫТЬ СКРИПТ", preset_lbl="Пресет",
+        uptime="Время работы", ping_card="Пинг",
+        farm_success="Собрано", farm_fail="Ошибки",
+        farm_escapes="Побеги", farm_coins="Монеты",
+        toast_started="Скрипт загружен  v6.1",
+        toast_farm_on="Автофарм: ВКЛ",
+        toast_farm_off="Автофарм: ВЫКЛ",
+        toast_rejoin="Переподключение...",
+        toast_hop="Поиск сервера...",
+        tog_player_esp="ESP игрока", tog_show_names="Имена", tog_show_dist="Расстояние",
+        tog_lives_esp="ESP жизней", tog_exit_esp="ESP выходов", tog_loot_esp="ESP лута",
+        tog_coins_disp="Монеты HUD",
+        tog_farm_loot="Фарм лута", tog_auto_revive="Автоподъём", tog_self_revive="Самоподъём",
+        tog_killer_safe="Защита от убийцы", tog_auto_escape="Автопобег", tog_kill_all="Убить всех",
+        tog_double_jump="Двойной прыжок", tog_inf_jump="Беск. прыжок", tog_noclip="Нет коллизий",
+        tog_fly="Полёт", tog_speed_boost="Ускорение", tog_anti_afk="Анти-АФК",
+        tog_remove_fog="Убрать туман", tog_snow_anim="Снежная анимация", tog_anti_void="Анти-Пустота",
+        tog_ghost_mode="Режим призрака", tog_hitbox="Хитбокс", tog_fps_boost="FPS Boost",
+        sec_fpsboost="FPS BOOST", tog_ads="Показ рекл.",
+        sl_name_offset="Смещ. имени", sl_dist_offset="Смещ. дист.", sl_heart_size="Размер сердца",
+        sl_hitbox_dist="Дистанция хитбокса",
+        sl_height="Высота", sl_tilt="Наклон", sl_min_value="Мин. ценность",
+        sl_fly_speed="Скор. полёта", sl_speed="Скорость", sl_safety_dist="Дист. защиты",
+        sl_farm_speed="Скор. фарма",
+        theme_lbl="Тема UI",
+        confirm_close="Вы уверены, что хотите закрыть?",
+        btn_yes="Да", btn_no="Нет",
+        ghost_farm_warn="Отключите функции Farm для Ghost Mode!"
+    }
+}l="Переподключение", rejoin_btn="GO",
         hop_lbl="Сменить сервер", hop_btn="HOP",
         advanced="ДОПОЛНИТЕЛЬНО",
         lang_toggle="Язык",
@@ -3980,6 +4028,67 @@ local function buildUI()
         UI.makeSliderRow(subH,_T("sl_hitbox_dist"),5,50,St.Fl.hitboxRadius,function(v) St.Fl.hitboxRadius=v end,nil,"sl_hitbox_dist")
     end
     local function _buildSettings()
+        _LS(settPage,"sec_char_move")
+        local mGrid=UI.makeGridContainer(settPage)
+        UI.A(settPage,mGrid)
+        local subSp,sllSp=UI.makeSubContainer(settPage)
+        UI.makeToggle(mGrid,"SpeedEnabled",_T("tog_speed_boost"),function(on)
+            subSp.Visible=on; subSp.Size=UDim2_new(1,0,0,on and sllSp.AbsoluteContentSize.Y or 0)
+            local ch=Sv.LocalPlayer.Character
+            local hu=ch and ch:FindFirstChildOfClass("Humanoid")
+            if hu then hu.WalkSpeed=on and St.Fl.currentSpeed or 16 end
+            if on then
+                if St.Cn.speed then St.Cn.speed:Disconnect() end
+                local _spChar,_spHum=nil,nil
+                St.Cn.speed=Sv.RunService.Heartbeat:Connect(function()
+                    if not St.Settings.SpeedEnabled then return end
+                    local c=Sv.LocalPlayer.Character
+                    if c~=_spChar then _spChar=c; _spHum=c and c:FindFirstChildOfClass("Humanoid") end
+                    if _spHum and _spHum.WalkSpeed~=St.Fl.currentSpeed then _spHum.WalkSpeed=St.Fl.currentSpeed end
+                end)
+            else
+                if St.Cn.speed then St.Cn.speed:Disconnect(); St.Cn.speed=nil end
+                local c=Sv.LocalPlayer.Character
+                local h=c and c:FindFirstChildOfClass("Humanoid")
+                if h then h.WalkSpeed=16 end
+            end
+        end,"tog_speed_boost")
+        UI.A(settPage,subSp)
+        UI.makeSliderRow(subSp,_T("sl_speed"),1,300,St.Fl.currentSpeed,function(v)
+            St.Fl.currentSpeed=v
+            if St.Settings.SpeedEnabled then
+                local ch=Sv.LocalPlayer.Character
+                local hu=ch and ch:FindFirstChildOfClass("Humanoid")
+                if hu then hu.WalkSpeed=St.Fl.currentSpeed end
+            end
+        end,nil,"sl_speed")
+        local subFly,sllFly=UI.makeSubContainer(settPage)
+        UI.makeToggle(mGrid,"FlyEnabled",_T("tog_fly"),function(on)
+            subFly.Visible=on; subFly.Size=UDim2_new(1,0,0,on and sllFly.AbsoluteContentSize.Y or 0)
+            if on then F.startFly() else F.stopFly() end
+        end,"tog_fly")
+        UI.A(settPage,subFly)
+        UI.makeSliderRow(subFly,_T("sl_fly_speed"),10,300,St.Fl.flySpeed,function(v) St.Fl.flySpeed=v end,nil,"sl_fly_speed")
+        UI.makeToggle(mGrid,"InfiniteJump",_T("tog_inf_jump"),function(on) if on then F.startInfiniteJump() else F.stopInfiniteJump() end end,"tog_inf_jump")
+        UI.makeToggle(mGrid,"DoubleJump",_T("tog_double_jump"),function(on) if on then F.setupDoubleJump() end end,"tog_double_jump")
+        UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end end,"tog_noclip")
+        UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) end,"tog_ghost_mode")
+        UI.makeToggle(mGrid,"ShiftLock","Shift Lock",function(on)
+            if on then F.startShiftLock() else F.stopShiftLock() end
+        end)
+        UI.A(settPage,UI.makeDivider(settPage))
+        _LS(settPage,"sec_env_util")
+        local eGrid=UI.makeGridContainer(settPage)
+        UI.A(settPage,eGrid)
+        UI.makeToggle(eGrid,"RemoveFog",_T("tog_remove_fog"),function(on) if on then F.enableFogRemoval() else F.disableFogRemoval() end end,"tog_remove_fog")
+        UI.makeToggle(eGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) if on then F.applySnowAnims(Sv.LocalPlayer.Character) else F.stopSnowAnimation() end end,"tog_snow_anim")
+        UI.makeToggle(eGrid,"AntiVoid",_T("tog_anti_void"),nil,"tog_anti_void")
+        UI.makeToggle(eGrid,"AntiAFK",_T("tog_anti_afk"),function(on) if on then F.startAntiAFK() else F.stopAntiAFK() end end,"tog_anti_afk")
+        UI.makeToggle(eGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
+            if on then F.startFpsBoost() else F.stopFpsBoost() end
+        end,"tog_fps_boost")
+        UI.A(settPage,UI.makeDivider(settPage))
+        _LS(settPage,"sec_ui_cust")
         do
             local langRow=Instance_new("Frame"); langRow.Parent=settPage
             langRow.Size=UDim2_new(1,0,0,56); langRow.BackgroundColor3=UI.C.ROW
@@ -4054,8 +4163,6 @@ local function buildUI()
             St.UIRefs._updateLangBtns=_updateLangBtns
             UI.A(settPage,langRow)
         end
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"theme_lbl")
         do
             local thRow=Instance_new("Frame"); thRow.Parent=settPage
             thRow.Size=UDim2_new(1,0,0,38); thRow.BackgroundColor3=UI.C.ROW; thRow.BorderSizePixel=0
@@ -4102,126 +4209,6 @@ local function buildUI()
             end)
             UI.A(settPage,thRow)
         end
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_movement")
-        local mGrid=UI.makeGridContainer(settPage)
-        UI.A(settPage,mGrid)
-        UI.makeToggle(mGrid,"DoubleJump",_T("tog_double_jump"),function(on) if on then F.setupDoubleJump() end end,"tog_double_jump")
-        UI.makeToggle(mGrid,"InfiniteJump",_T("tog_inf_jump"),function(on) if on then F.startInfiniteJump() else F.stopInfiniteJump() end end,"tog_inf_jump")
-        UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end end,"tog_noclip")
-        UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) end,"tog_ghost_mode")
-        UI.makeToggle(mGrid,"ShiftLock","Shift Lock",function(on)
-            if on then F.startShiftLock() else F.stopShiftLock() end
-        end)
-        local subFly,sllFly=UI.makeSubContainer(settPage)
-        UI.makeToggle(mGrid,"FlyEnabled",_T("tog_fly"),function(on)
-            subFly.Visible=on; subFly.Size=UDim2_new(1,0,0,on and sllFly.AbsoluteContentSize.Y or 0)
-            if on then F.startFly() else F.stopFly() end
-        end,"tog_fly")
-        UI.A(settPage,subFly)
-        UI.makeSliderRow(subFly,_T("sl_fly_speed"),10,300,St.Fl.flySpeed,function(v) St.Fl.flySpeed=v end,nil,"sl_fly_speed")
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_speed")
-        local spGrid=UI.makeGridContainer(settPage)
-        UI.A(settPage,spGrid)
-        local subSp,sllSp=UI.makeSubContainer(settPage)
-        UI.makeToggle(spGrid,"SpeedEnabled",_T("tog_speed_boost"),function(on)
-            subSp.Visible=on; subSp.Size=UDim2_new(1,0,0,on and sllSp.AbsoluteContentSize.Y or 0)
-            local ch=Sv.LocalPlayer.Character
-            local hu=ch and ch:FindFirstChildOfClass("Humanoid")
-            if hu then hu.WalkSpeed=on and St.Fl.currentSpeed or 16 end
-            if on then
-                if St.Cn.speed then St.Cn.speed:Disconnect() end
-                local _spChar,_spHum=nil,nil
-                St.Cn.speed=Sv.RunService.Heartbeat:Connect(function()
-                    if not St.Settings.SpeedEnabled then return end
-                    local c=Sv.LocalPlayer.Character
-                    if c~=_spChar then _spChar=c; _spHum=c and c:FindFirstChildOfClass("Humanoid") end
-                    if _spHum and _spHum.WalkSpeed~=St.Fl.currentSpeed then _spHum.WalkSpeed=St.Fl.currentSpeed end
-                end)
-            else
-                if St.Cn.speed then St.Cn.speed:Disconnect(); St.Cn.speed=nil end
-                local c=Sv.LocalPlayer.Character
-                local h=c and c:FindFirstChildOfClass("Humanoid")
-                if h then h.WalkSpeed=16 end
-            end
-        end,"tog_speed_boost")
-        UI.A(settPage,subSp)
-        UI.makeSliderRow(subSp,_T("sl_speed"),1,300,St.Fl.currentSpeed,function(v)
-            St.Fl.currentSpeed=v
-            if St.Settings.SpeedEnabled then
-                local ch=Sv.LocalPlayer.Character
-                local hu=ch and ch:FindFirstChildOfClass("Humanoid")
-                if hu then hu.WalkSpeed=St.Fl.currentSpeed end
-            end
-        end,nil,"sl_speed")
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_visuals")
-        local vGrid=UI.makeGridContainer(settPage)
-        UI.A(settPage,vGrid)
-        UI.makeToggle(vGrid,"RemoveFog",_T("tog_remove_fog"),function(on) if on then F.enableFogRemoval() else F.disableFogRemoval() end end,"tog_remove_fog")
-        UI.makeToggle(vGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) if on then F.applySnowAnims(Sv.LocalPlayer.Character) else F.stopSnowAnimation() end end,"tog_snow_anim")
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_utility")
-        local uGrid=UI.makeGridContainer(settPage)
-        UI.A(settPage,uGrid)
-        UI.makeToggle(uGrid,"AntiAFK",_T("tog_anti_afk"),function(on) if on then F.startAntiAFK() else F.stopAntiAFK() end end,"tog_anti_afk")
-        UI.makeToggle(uGrid,"AntiVoid",_T("tog_anti_void"),nil,"tog_anti_void")
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_links")
-        _LS(settPage,"sec_fpsboost")
-        do
-            local fpsGrid=UI.makeGridContainer(settPage)
-            UI.A(settPage,fpsGrid)
-            UI.makeToggle(fpsGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
-                if on then F.startFpsBoost() else F.stopFpsBoost() end
-            end,"tog_fps_boost")
-            UI.makeToggle(fpsGrid,"ShowAds",_T("tog_ads"),nil,"tog_ads")
-        end
-        do
-            local TG_LINK="https://t.me/JohnyX_STK"
-            local tgRow=Instance_new("Frame"); tgRow.Parent=settPage
-            tgRow.Size=UDim2_new(1,0,0,36); tgRow.BackgroundColor3=UI.C.ROW; tgRow.BorderSizePixel=0
-            UI.registerTheme(tgRow,"ROW","BackgroundColor3")
-            tgRow.BackgroundTransparency=0.4
-            local trCrn=Instance_new("UICorner"); trCrn.Parent=tgRow; trCrn.CornerRadius=UDim_new(0,7)
-            local tgImg=Instance_new("ImageLabel"); tgImg.Parent=tgRow
-            tgImg.Size=UDim2_new(0,26,0,26); tgImg.Position=UDim2_new(0,5,0.5,-13)
-            tgImg.BackgroundTransparency=1; tgImg.ScaleType=Enum.ScaleType.Fit
-            local tiCrn=Instance_new("UICorner"); tiCrn.Parent=tgImg; tiCrn.CornerRadius=UDim_new(1,0)
-            setPrivateImage(tgImg,"Telegram.png")
-            local tgLbl=Instance_new("TextLabel"); tgLbl.Parent=tgRow
-            tgLbl.Size=UDim2_new(1,-112,1,0); tgLbl.Position=UDim2_new(0,38,0,0)
-            tgLbl.BackgroundTransparency=1; tgLbl.Text="JohnyX Channel"
-            tgLbl.TextColor3=Color3_new(1,1,1); tgLbl.Font=Enum.Font.GothamSemibold
-            UI.registerTheme(tgLbl,"TEXT","TextColor3")
-            tgLbl.TextSize=10; tgLbl.TextXAlignment=Enum.TextXAlignment.Left
-            local tgBtn=Instance_new("TextButton"); tgBtn.Parent=tgRow
-            tgBtn.Size=UDim2_new(0,64,0,22); tgBtn.Position=UDim2_new(1,-70,0.5,-11)
-            tgBtn.BackgroundColor3=Color3_fromRGB(0,118,190); tgBtn.Text=" COPY"
-            tgBtn.TextColor3=Color3_new(1,1,1); tgBtn.Font=Enum.Font.GothamBold
-            tgBtn.TextSize=9; tgBtn.BorderSizePixel=0
-            local tbCrn=Instance_new("UICorner"); tbCrn.Parent=tgBtn; tbCrn.CornerRadius=UDim_new(0,5)
-            tgBtn.MouseButton1Click:Connect(function()
-                pcall(function() setclipboard(TG_LINK) end)
-                UI.showToast("  Link copied!",ScreenGui)
-            end)
-            UI.A(settPage,tgRow)
-        end
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"server_tools")
-        UI.A(settPage,UI.makeActionRow(settPage,_T("rejoin_lbl"),_T("rejoin_btn"),"ACCENT",function()
-            local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
-            if ui then UI.showToast(_T("toast_rejoin"),ui) end
-            F.rejoinServer()
-        end))
-        UI.A(settPage,UI.makeActionRow(settPage,_T("hop_lbl"),_T("hop_btn"),"ACCENT",function()
-            local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
-            if ui then UI.showToast(_T("toast_hop"),ui) end
-            F.serverHop()
-        end))
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_transparency")
         do
             local transRow=Instance_new("Frame"); transRow.Parent=settPage
             transRow.Size=UDim2_new(1,0,0,38); transRow.BackgroundColor3=UI.C.ROW; transRow.BorderSizePixel=0
@@ -4281,8 +4268,6 @@ local function buildUI()
             end)
             UI.A(settPage,transRow)
         end
-        UI.A(settPage,UI.makeDivider(settPage))
-        _LS(settPage,"sec_uisize")
         do
             local scaleRow=Instance_new("Frame"); scaleRow.Parent=settPage
             scaleRow.Size=UDim2_new(1,0,0,38); scaleRow.BackgroundColor3=UI.C.ROW; scaleRow.BorderSizePixel=0
@@ -4339,7 +4324,6 @@ local function buildUI()
             end)
             UI.A(settPage,scaleRow)
         end
-        _LS(settPage,"sec_winsize")
         do
             local winRow=Instance_new("Frame"); winRow.Parent=settPage
             winRow.Size=UDim2_new(1,0,0,38); winRow.BackgroundColor3=UI.C.ROW; winRow.BorderSizePixel=0
@@ -4398,6 +4382,51 @@ local function buildUI()
                 end
             end)
             UI.A(settPage,winRow)
+        end
+        local uiGrid=UI.makeGridContainer(settPage)
+        UI.A(settPage,uiGrid)
+        UI.makeToggle(uiGrid,"ShowAds",_T("tog_ads"),nil,"tog_ads")
+        UI.A(settPage,UI.makeDivider(settPage))
+        _LS(settPage,"sec_server_links")
+        UI.A(settPage,UI.makeActionRow(settPage,_T("rejoin_lbl"),_T("rejoin_btn"),"ACCENT",function()
+            local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
+            if ui then UI.showToast(_T("toast_rejoin"),ui) end
+            F.rejoinServer()
+        end))
+        UI.A(settPage,UI.makeActionRow(settPage,_T("hop_lbl"),_T("hop_btn"),"ACCENT",function()
+            local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
+            if ui then UI.showToast(_T("toast_hop"),ui) end
+            F.serverHop()
+        end))
+        do
+            local TG_LINK="https://t.me/JohnyX_STK"
+            local tgRow=Instance_new("Frame"); tgRow.Parent=settPage
+            tgRow.Size=UDim2_new(1,0,0,36); tgRow.BackgroundColor3=UI.C.ROW; tgRow.BorderSizePixel=0
+            UI.registerTheme(tgRow,"ROW","BackgroundColor3")
+            tgRow.BackgroundTransparency=0.4
+            local trCrn=Instance_new("UICorner"); trCrn.Parent=tgRow; trCrn.CornerRadius=UDim_new(0,7)
+            local tgImg=Instance_new("ImageLabel"); tgImg.Parent=tgRow
+            tgImg.Size=UDim2_new(0,26,0,26); tgImg.Position=UDim2_new(0,5,0.5,-13)
+            tgImg.BackgroundTransparency=1; tgImg.ScaleType=Enum.ScaleType.Fit
+            local tiCrn=Instance_new("UICorner"); tiCrn.Parent=tgImg; tiCrn.CornerRadius=UDim_new(1,0)
+            setPrivateImage(tgImg,"Telegram.png")
+            local tgLbl=Instance_new("TextLabel"); tgLbl.Parent=tgRow
+            tgLbl.Size=UDim2_new(1,-112,1,0); tgLbl.Position=UDim2_new(0,38,0,0)
+            tgLbl.BackgroundTransparency=1; tgLbl.Text="JohnyX Channel"
+            tgLbl.TextColor3=Color3_new(1,1,1); tgLbl.Font=Enum.Font.GothamSemibold
+            UI.registerTheme(tgLbl,"TEXT","TextColor3")
+            tgLbl.TextSize=10; tgLbl.TextXAlignment=Enum.TextXAlignment.Left
+            local tgBtn=Instance_new("TextButton"); tgBtn.Parent=tgRow
+            tgBtn.Size=UDim2_new(0,64,0,22); tgBtn.Position=UDim2_new(1,-70,0.5,-11)
+            tgBtn.BackgroundColor3=Color3_fromRGB(0,118,190); tgBtn.Text=" COPY"
+            tgBtn.TextColor3=Color3_new(1,1,1); tgBtn.Font=Enum.Font.GothamBold
+            tgBtn.TextSize=9; tgBtn.BorderSizePixel=0
+            local tbCrn=Instance_new("UICorner"); tbCrn.Parent=tgBtn; tbCrn.CornerRadius=UDim_new(0,5)
+            tgBtn.MouseButton1Click:Connect(function()
+                pcall(function() setclipboard(TG_LINK) end)
+                UI.showToast("  Link copied!",ScreenGui)
+            end)
+            UI.A(settPage,tgRow)
         end
     end
     _buildHome(); task.wait()
