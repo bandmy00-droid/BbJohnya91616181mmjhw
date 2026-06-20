@@ -2352,7 +2352,7 @@ function F.restartEnabledCommands()
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
 end
 UI.C={
-    BG=Color3_fromRGB(12,12,12),
+    BG=Color3_fromRGB(0,0,0),
     PANEL=Color3_fromRGB(20,20,20),
     ROW=Color3_fromRGB(30,30,30),
     ACCENT=Color3_fromRGB(0,120,255),
@@ -2576,7 +2576,7 @@ function UI.makeDivider(parent)
     }); dGr.Transparency=NumberSequence.new(0.3)
     return d
 end
-function UI.makeActionRow(parent,labelTxt,btnTxt,btnColorKey,onClick)
+function UI.makeActionRow(parent,labelTxt,btnTxt,btnColorKey,onClick,langKey)
     local row=Instance_new("Frame"); row.Parent=parent
     row.Size=UDim2_new(1,0,0,34); row.BackgroundColor3=UI.C.ROW
     UI.registerTheme(row,"ROW","BackgroundColor3")
@@ -2601,6 +2601,7 @@ function UI.makeActionRow(parent,labelTxt,btnTxt,btnColorKey,onClick)
     UI.registerTheme(lbl,"TEXT","TextColor3")
     lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=10
     lbl.TextXAlignment=Enum.TextXAlignment.Left
+    if langKey then _LR(lbl,langKey) end
     local ab=Instance_new("TextButton"); ab.Parent=row
     ab.Size=UDim2_new(0,52,0,24); ab.Position=UDim2_new(1,-58,0.5,-12)
     ab.BackgroundColor3=UI.C[btnColorKey] or UI.C.ACCENT; ab.Text=btnTxt
@@ -2620,7 +2621,7 @@ function UI.makeActionRow(parent,labelTxt,btnTxt,btnColorKey,onClick)
     end)
     return row
 end
-function UI.makeWideBtn(parent,labelTxt,onClick)
+function UI.makeWideBtn(parent,labelTxt,onClick,langKey)
     local row=Instance_new("Frame"); row.Parent=parent
     row.Size=UDim2_new(1,0,0,32); row.BackgroundColor3=UI.C.OFF
     UI.registerTheme(row,"OFF","BackgroundColor3")
@@ -2644,6 +2645,7 @@ function UI.makeWideBtn(parent,labelTxt,onClick)
     btn.Text=labelTxt; btn.TextColor3=Color3_new(1,1,1)
     UI.registerTheme(btn,"TEXT","TextColor3")
     btn.Font=Enum.Font.GothamBold; btn.TextSize=10; btn.BorderSizePixel=0
+    if langKey then _LR(btn,langKey) end
     btn.MouseButton1Click:Connect(onClick)
     row.MouseEnter:Connect(function()
         Sv.TweenService:Create(row,TweenInfo.new(0.12),{BackgroundTransparency=0.3}):Play()
@@ -2737,10 +2739,11 @@ function UI.makeFontPicker(parent,currentFont,onPick)
     local rCrn=Instance_new("UICorner"); rCrn.Parent=row; rCrn.CornerRadius=UDim_new(0,6)
     local lbl=Instance_new("TextLabel"); lbl.Parent=row
     lbl.Size=UDim2_new(0,36,1,0); lbl.Position=UDim2_new(0,6,0,0)
-    lbl.BackgroundTransparency=1; lbl.Text="Font"; lbl.TextColor3=Color3_new(1,1,1)
+    lbl.BackgroundTransparency=1; lbl.Text=_T("font_lbl"); lbl.TextColor3=Color3_new(1,1,1)
     UI.registerTheme(lbl,"TEXT","TextColor3")
     lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=9
     lbl.TextXAlignment=Enum.TextXAlignment.Left
+    _LR(lbl,"font_lbl")
     local fontBtns={}; local bW=30; local bG=2; local sX=42
     for i,fd in ipairs({{"Normal",Enum.Font.Gotham},{"Bold",Enum.Font.GothamBold},{"Semi",Enum.Font.GothamSemibold},{"Code",Enum.Font.Code},{"Arcade",Enum.Font.Arcade}}) do
         local fb=Instance_new("TextButton"); fb.Parent=row
@@ -2811,7 +2814,16 @@ local _LANG={
         theme_lbl="UI Theme",
         confirm_close="Are you sure you want to close?",
         btn_yes="Yes", btn_no="No",
-        ghost_farm_warn="Disable Farm features to use Ghost Mode!"
+        ghost_farm_warn="Disable Farm features to use Ghost Mode!",
+        font_lbl="Font",
+        lock_btn="Lock", unlock_btn="Unlock",
+        hud_toggle_btn="FPS / PING  HUD",
+        copy_btn=" COPY",
+        toast_copied="  Link copied!",
+        tog_shift_lock="Shift Lock",
+        revive_self_btn="Revive My Self  GO",
+        tp_exit_btn="Teleport to Exit  GO",
+        tp_survivor_btn="Random Survivor  TP"
     },
     RU={
         home_tab="Главная", esp_tab="Визуал", farm_tab="Автофарм", sett_tab="Опции",
@@ -2865,7 +2877,16 @@ local _LANG={
         theme_lbl="Тема UI",
         confirm_close="Вы уверены, что хотите закрыть?",
         btn_yes="Да", btn_no="Нет",
-        ghost_farm_warn="Отключите функции Farm для Ghost Mode!"
+        ghost_farm_warn="Отключите функции Farm для Ghost Mode!",
+        font_lbl="Шрифт",
+        lock_btn="Закрепить", unlock_btn="Открепить",
+        hud_toggle_btn="FPS / ПИНГ  HUD",
+        copy_btn=" КОПИЯ",
+        toast_copied="  Ссылка скопирована!",
+        tog_shift_lock="Фиксация камеры",
+        revive_self_btn="Поднять себя  GO",
+        tp_exit_btn="Телепорт к выходу  GO",
+        tp_survivor_btn="Случайный выживший  TP"
     }
 }
 _T=function(k) return (_LANG[St.Language] or _LANG.EN)[k] or k end
@@ -3014,7 +3035,7 @@ local function buildUI()
         lockBtn.Position=UDim2_new(1,-55,0,0)
         lockBtn.BackgroundColor3=Color3_fromRGB(30,40,65)
         lockBtn.BackgroundTransparency=0.05
-        lockBtn.Text="Lock"
+        lockBtn.Text=_T("lock_btn")
         lockBtn.TextColor3=Color3_fromRGB(180,200,255)
         lockBtn.Font=Enum.Font.GothamBold
         lockBtn.TextSize=9
@@ -3083,11 +3104,11 @@ local function buildUI()
             locked=not locked
             if locked then
                 dragActive=false
-                lockBtn.Text="Unlock"
+                lockBtn.Text=_T("unlock_btn")
                 lockBtn.BackgroundColor3=Color3_fromRGB(160,100,0)
                 lockBtn.TextColor3=Color3_fromRGB(255,220,120)
             else
-                lockBtn.Text="Lock"
+                lockBtn.Text=_T("lock_btn")
                 lockBtn.BackgroundColor3=Color3_fromRGB(30,40,65)
                 lockBtn.TextColor3=Color3_fromRGB(180,200,255)
             end
@@ -3705,7 +3726,8 @@ local function buildUI()
             UI.registerTheme(hudToggleBtn,"OFF","BackgroundColor3")
             hudToggleBtn.TextColor3=Color3_new(1,1,1); hudToggleBtn.Font=Enum.Font.GothamBold
             UI.registerTheme(hudToggleBtn,"TEXT","TextColor3")
-            hudToggleBtn.TextSize=10; hudToggleBtn.Text="FPS / PING  HUD"
+            hudToggleBtn.TextSize=10; hudToggleBtn.Text=_T("hud_toggle_btn")
+            _LR(hudToggleBtn,"hud_toggle_btn")
             local htbCrn=Instance_new("UICorner"); htbCrn.Parent=hudToggleBtn; htbCrn.CornerRadius=UDim_new(0,6)
             local htbStr=Instance_new("UIStroke"); htbStr.Parent=hudToggleBtn
             htbStr.Color=Color3_fromRGB(255,255,255); htbStr.Thickness=0.6; htbStr.Transparency=0.75
@@ -3952,7 +3974,7 @@ local function buildUI()
         UI.makeToggle(rGrid,"AutoSelfRevive",_T("tog_self_revive"),function(on)
             if on then F.startAutoSelfRevive() else F.stopAutoSelfRevive() end
         end,"tog_self_revive")
-        UI.A(farmPage,UI.makeWideBtn(farmPage,"Revive My Self  GO",F.reviveMySelf))
+        UI.A(farmPage,UI.makeWideBtn(farmPage,_T("revive_self_btn"),F.reviveMySelf,"revive_self_btn"))
         UI.A(farmPage,UI.makeDivider(farmPage))
         _LS(farmPage,"sec_safety")
         local sGrid=UI.makeGridContainer(farmPage)
@@ -3969,8 +3991,8 @@ local function buildUI()
         UI.makeToggle(eGrid,"AutoEscape",_T("tog_auto_escape"),function(on)
             if on then F.startAutoEscape() else F.stopAutoEscape() end
         end,"tog_auto_escape")
-        UI.A(farmPage,UI.makeWideBtn(farmPage,"Teleport to Exit  GO",F.teleportToNearestExit))
-        UI.A(farmPage,UI.makeWideBtn(farmPage,"Random Survivor  TP",F.teleportToRandomSurvivor))
+        UI.A(farmPage,UI.makeWideBtn(farmPage,_T("tp_exit_btn"),F.teleportToNearestExit,"tp_exit_btn"))
+        UI.A(farmPage,UI.makeWideBtn(farmPage,_T("tp_survivor_btn"),F.teleportToRandomSurvivor,"tp_survivor_btn"))
         UI.A(farmPage,UI.makeDivider(farmPage))
         _LS(farmPage,"sec_killer",true)
         local kGrid=UI.makeGridContainer(farmPage)
@@ -4033,9 +4055,9 @@ local function buildUI()
         UI.makeToggle(mGrid,"DoubleJump",_T("tog_double_jump"),function(on) if on then F.setupDoubleJump() end end,"tog_double_jump")
         UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end end,"tog_noclip")
         UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) end,"tog_ghost_mode")
-        UI.makeToggle(mGrid,"ShiftLock","Shift Lock",function(on)
+        UI.makeToggle(mGrid,"ShiftLock",_T("tog_shift_lock"),function(on)
             if on then F.startShiftLock() else F.stopShiftLock() end
-        end)
+        end,"tog_shift_lock")
         UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_env_util")
         local eGrid=UI.makeGridContainer(settPage)
@@ -4133,8 +4155,9 @@ local function buildUI()
             thLbl.Size=UDim2_new(0,80,1,0); thLbl.Position=UDim2_new(0,7,0,0)
             thLbl.BackgroundTransparency=1; thLbl.TextColor3=UI.C.SUBTEXT
             UI.registerTheme(thLbl,"SUBTEXT","TextColor3")
-            thLbl.Font=Enum.Font.GothamBold; thLbl.TextSize=8; thLbl.Text="COLOR"
+            thLbl.Font=Enum.Font.GothamBold; thLbl.TextSize=8; thLbl.Text=_T("theme_lbl")
             thLbl.TextXAlignment=Enum.TextXAlignment.Left
+            _LR(thLbl,"theme_lbl")
             local tTrack=Instance_new("Frame"); tTrack.Parent=thRow
             tTrack.Size=UDim2_new(1,-100,0,12); tTrack.Position=UDim2_new(0,86,0.5,-6)
             tTrack.BackgroundColor3=Color3_new(1,1,1); tTrack.BorderSizePixel=0
@@ -4179,8 +4202,9 @@ local function buildUI()
             tLblT.Size=UDim2_new(0,80,0,16); tLblT.Position=UDim2_new(0,7,0,3)
             tLblT.BackgroundTransparency=1; tLblT.TextColor3=UI.C.SUBTEXT
             UI.registerTheme(tLblT,"SUBTEXT","TextColor3")
-            tLblT.Font=Enum.Font.GothamBold; tLblT.TextSize=8; tLblT.Text="TRANSPARENCY"
+            tLblT.Font=Enum.Font.GothamBold; tLblT.TextSize=8; tLblT.Text=_T("sec_transparency")
             tLblT.TextXAlignment=Enum.TextXAlignment.Left
+            _LR(tLblT,"sec_transparency")
             local tValT=Instance_new("TextLabel"); tValT.Parent=transRow
             tValT.Size=UDim2_new(0,30,0,16); tValT.Position=UDim2_new(1,-34,0,3)
             tValT.BackgroundTransparency=1; tValT.TextColor3=Color3_new(1,1,1)
@@ -4238,8 +4262,9 @@ local function buildUI()
             sLblT.Size=UDim2_new(0,38,0,16); sLblT.Position=UDim2_new(0,7,0,3)
             sLblT.BackgroundTransparency=1; sLblT.TextColor3=UI.C.SUBTEXT
             UI.registerTheme(sLblT,"SUBTEXT","TextColor3")
-            sLblT.Font=Enum.Font.GothamBold; sLblT.TextSize=8; sLblT.Text="SCALE"
+            sLblT.Font=Enum.Font.GothamBold; sLblT.TextSize=8; sLblT.Text=_T("sec_uisize")
             sLblT.TextXAlignment=Enum.TextXAlignment.Left
+            _LR(sLblT,"sec_uisize")
             local sValT=Instance_new("TextLabel"); sValT.Parent=scaleRow
             sValT.Size=UDim2_new(0,30,0,16); sValT.Position=UDim2_new(1,-34,0,3)
             sValT.BackgroundTransparency=1; sValT.TextColor3=Color3_new(1,1,1)
@@ -4294,8 +4319,9 @@ local function buildUI()
             wLblT.Size=UDim2_new(0,60,0,16); wLblT.Position=UDim2_new(0,7,0,3)
             wLblT.BackgroundTransparency=1; wLblT.TextColor3=UI.C.SUBTEXT
             UI.registerTheme(wLblT,"SUBTEXT","TextColor3")
-            wLblT.Font=Enum.Font.GothamBold; wLblT.TextSize=8; wLblT.Text="WIN SIZE"
+            wLblT.Font=Enum.Font.GothamBold; wLblT.TextSize=8; wLblT.Text=_T("sec_winsize")
             wLblT.TextXAlignment=Enum.TextXAlignment.Left
+            _LR(wLblT,"sec_winsize")
             local wValT=Instance_new("TextLabel"); wValT.Parent=winRow
             wValT.Size=UDim2_new(0,30,0,16); wValT.Position=UDim2_new(1,-34,0,3)
             wValT.BackgroundTransparency=1; wValT.TextColor3=Color3_new(1,1,1)
@@ -4352,12 +4378,12 @@ local function buildUI()
             local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
             if ui then UI.showToast(_T("toast_rejoin"),ui) end
             F.rejoinServer()
-        end))
+        end,"rejoin_lbl"))
         UI.A(settPage,UI.makeActionRow(settPage,_T("hop_lbl"),_T("hop_btn"),"ACCENT",function()
             local ui=Sv.CoreGui:FindFirstChild("JxH_UI") or Sv.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("JxH_UI")
             if ui then UI.showToast(_T("toast_hop"),ui) end
             F.serverHop()
-        end))
+        end,"hop_lbl"))
         do
             local TG_LINK="https://t.me/JohnyX_STK"
             local tgRow=Instance_new("Frame"); tgRow.Parent=settPage
@@ -4378,13 +4404,14 @@ local function buildUI()
             tgLbl.TextSize=10; tgLbl.TextXAlignment=Enum.TextXAlignment.Left
             local tgBtn=Instance_new("TextButton"); tgBtn.Parent=tgRow
             tgBtn.Size=UDim2_new(0,64,0,22); tgBtn.Position=UDim2_new(1,-70,0.5,-11)
-            tgBtn.BackgroundColor3=Color3_fromRGB(0,118,190); tgBtn.Text=" COPY"
+            tgBtn.BackgroundColor3=Color3_fromRGB(0,118,190); tgBtn.Text=_T("copy_btn")
             tgBtn.TextColor3=Color3_new(1,1,1); tgBtn.Font=Enum.Font.GothamBold
             tgBtn.TextSize=9; tgBtn.BorderSizePixel=0
             local tbCrn=Instance_new("UICorner"); tbCrn.Parent=tgBtn; tbCrn.CornerRadius=UDim_new(0,5)
+            _LR(tgBtn,"copy_btn")
             tgBtn.MouseButton1Click:Connect(function()
                 pcall(function() setclipboard(TG_LINK) end)
-                UI.showToast("  Link copied!",ScreenGui)
+                UI.showToast(_T("toast_copied"),ScreenGui)
             end)
             UI.A(settPage,tgRow)
         end
@@ -4482,7 +4509,7 @@ local function showChangelog(parentGui)
         closeBtn.Size=UDim2_new(0,26,0,26); closeBtn.Position=UDim2_new(1,-34,0,10)
         closeBtn.BackgroundColor3=UI.C.OFF; closeBtn.BackgroundTransparency=0
         UI.registerTheme(closeBtn,"OFF","BackgroundColor3")
-        closeBtn.Text="✕"; closeBtn.TextColor3=Color3_fromRGB(200,200,200)
+        closeBtn.Text="X"; closeBtn.TextColor3=Color3_fromRGB(200,200,200)
         closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=14
         closeBtn.BorderSizePixel=0; closeBtn.ZIndex=1002; closeBtn.Parent=modal
         local cbCrn=Instance_new("UICorner"); cbCrn.CornerRadius=UDim_new(1,0); cbCrn.Parent=closeBtn
