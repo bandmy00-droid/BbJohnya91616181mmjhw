@@ -1,6 +1,6 @@
 local UPDATE_VERSION = "V6.1"
-local UPDATE_TEXT_EN = "1. 🔒 <b>New Feature:</b> Shift Lock \n2. 📺 <b>New Feature:</b> Show Ads (Present) \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
-local UPDATE_TEXT_RU = "1. 🔒 <b>Новая функция:</b> Shift Lock \n2. 📺 <b>Новая функция:</b> Показ рекламы \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
+local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm & UI bugs fixed \n2. 🎨 <b>Improved:</b> Pure OLED black theme + full RU translation \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
+local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> Ошибки ESP лута, Автофарма и интерфейса \n2. 🎨 <b>Улучшено:</b> Чистая чёрная OLED-тема и полный перевод RU \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
 local math_floor=math.floor
 local math_max=math.max
 local math_min=math.min
@@ -45,7 +45,7 @@ local St={
         RemoveFog=false,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
         SnowAnimation=false,AntiVoid=false,
-        ThemeHue=0,FpsBoost=false,ShowAds=true,ShiftLock=false,
+        ThemeHue=0.58,FpsBoost=false,ShowAds=true,ShiftLock=false,
     },
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
     DistSettings={OffsetY=-4.5,Font=Enum.Font.GothamBold},
@@ -762,7 +762,12 @@ function F.buildLootCache(lootFolder)
             target=(obj:IsA("Model") and obj.PrimaryPart) or obj:FindFirstChildWhichIsA("BasePart",true)
         elseif obj:IsA("BasePart") then
             if obj.Parent and (obj.Parent:IsA("Model") or obj.Parent:IsA("Folder")) and obj.Parent~=lootFolder then
-                return
+                local hasOwnIndicator=obj:GetAttribute("Value") or obj:GetAttribute("Amount")
+                    or obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+                    or obj:FindFirstChildWhichIsA("ClickDetector",true)
+                if not hasOwnIndicator then
+                    return
+                end
             end
             target=obj
         end
@@ -2353,20 +2358,20 @@ function F.restartEnabledCommands()
 end
 UI.C={
     BG=Color3_fromRGB(0,0,0),
-    PANEL=Color3_fromRGB(20,20,20),
-    ROW=Color3_fromRGB(30,30,30),
-    ACCENT=Color3_fromRGB(0,120,255),
-    ACCDIM=Color3_fromRGB(0,80,200),
-    TEXT=Color3_fromRGB(255,255,255),
-    SUBTEXT=Color3_fromRGB(170,170,170),
-    DIV=Color3_fromRGB(45,45,45),
-    OFF=Color3_fromRGB(40,40,40),
-    RED=Color3_fromRGB(255,40,40),
-    REDDIM=Color3_fromRGB(180,20,20),
+    PANEL=Color3_fromRGB(17,17,19),
+    ROW=Color3_fromRGB(25,25,28),
+    ACCENT=Color3_fromRGB(13,139,255),
+    ACCDIM=Color3_fromRGB(9,97,178),
+    TEXT=Color3_fromRGB(240,240,245),
+    SUBTEXT=Color3_fromRGB(160,164,174),
+    DIV=Color3_fromRGB(38,38,42),
+    OFF=Color3_fromRGB(34,34,38),
+    RED=Color3_fromRGB(255,69,69),
+    REDDIM=Color3_fromRGB(196,48,48),
     GLASS=Color3_fromRGB(255,255,255),
-    GOOD=Color3_fromRGB(20,220,80),
-    WARN=Color3_fromRGB(255,170,0),
-    DANGER=Color3_fromRGB(255,40,40)
+    GOOD=Color3_fromRGB(46,204,113),
+    WARN=Color3_fromRGB(255,179,38),
+    DANGER=Color3_fromRGB(255,69,69)
 }
 function F.applyTheme(hue)
     hue=math.clamp(hue or 0,0,1)
