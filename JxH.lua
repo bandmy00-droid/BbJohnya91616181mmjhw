@@ -44,7 +44,7 @@ local St={
         AutoFarmLoot=false,KillerSafety=false,AutoEscape=false,
         RemoveFog=false,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
-        SnowAnimation=false,AntiVoid=false,
+        SnowAnimation=false,RoyalAnimation=false,NinjaAnimation=false,AntiVoid=false,
         ThemeHue=0.58,FpsBoost=false,ShowAds=true,ShiftLock=false,
     },
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
@@ -95,7 +95,7 @@ local St={
     _savedBtnPos=nil,
     noclipParts={},
     _lockerCache={models={},time=0},
-    _snowTracks={},
+    _pristineAnimate=nil,
     _snowHrConn=nil,
     SAVE_FILE="JxH_settingsV6.1.json",
     _lastSaveTime=0,
@@ -1440,9 +1440,8 @@ function F.toggleGhostMode(enable)
                     if St.Settings.SpeedEnabled then rHum.WalkSpeed=St.Fl.currentSpeed else rHum.WalkSpeed=16 end
                     rHum:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
-                if St.Settings.SnowAnimation then
-                    F.applySnowAnims(realChar)
-                end
+                local _aw=F.getActiveAnim()
+                if _aw then F.applyCustomAnim(realChar,_aw) end
             end
             if fakeChar then fakeChar:Destroy() end
             St.Fl.fakeChar=nil
@@ -1974,136 +1973,111 @@ function F.startAutoSelfRevive()
         if F.isPlayerDowned(Sv.LocalPlayer) then lastSelf=now; F.reviveMySelf() end
     end)
 end
-local _SNOW_IDLE="rbxassetid://122257458498464"
-local _SNOW_RUN="rbxassetid://82598234841035"
-local _SNOW_JUMP="rbxassetid://75290611992385"
-local _SNOW_CLIMB="rbxassetid://88763136693023"
-local _SNOW_SWIM="rbxassetid://109346520324160"
-function F._cleanSnowState()
-    if St._snowConns then
-        for _,c in ipairs(St._snowConns) do
-            pcall(function() c:Disconnect() end)
+local _ANIM_SETS={
+    Snowman={
+        idle={Animation1="rbxassetid://122257458498464",Animation2="rbxassetid://122257458498464"},
+        walk={WalkAnim="rbxassetid://122150855457006"},
+        run={RunAnim="rbxassetid://82598234841035"},
+        jump={JumpAnim="rbxassetid://75290611992385"},
+        fall={FallAnim="rbxassetid://75290611992385"},
+        climb={ClimbAnim="rbxassetid://88763136693023"},
+        swim={Swim="rbxassetid://109346520324160"}
+    },
+    Royal={
+        idle={Animation1="http://www.roblox.com/asset/?id=10921248039",Animation2="rbxassetid://14366558676"},
+        walk={WalkAnim="http://www.roblox.com/asset/?id=10921298616"},
+        run={RunAnim="http://www.roblox.com/asset/?id=10921250460"},
+        jump={JumpAnim="http://www.roblox.com/asset/?id=10921252123"},
+        fall={FallAnim="http://www.roblox.com/asset/?id=10921251156"},
+        climb={ClimbAnim="http://www.roblox.com/asset/?id=10921247141"},
+        sit={SitAnim="rbxassetid://98983598181881"}
+    },
+    Ninja={
+        idle={Animation1="http://www.roblox.com/asset/?id=10921155160",Animation2="http://www.roblox.com/asset/?id=10921155867"},
+        walk={WalkAnim="http://www.roblox.com/asset/?id=10921162768"},
+        run={RunAnim="http://www.roblox.com/asset/?id=10921157929"},
+        jump={JumpAnim="http://www.roblox.com/asset/?id=10921160088"},
+        fall={FallAnim="http://www.roblox.com/asset/?id=10921159222"}
+    }
+}
+local _ANIM_TOGGLES={Snowman="SnowAnimation",Royal="RoyalAnimation",Ninja="NinjaAnimation"}
+function F._getPristineAnimate(char)
+    local live=char:FindFirstChild("Animate")
+    if St._pristineAnimateChar==char and St._pristineAnimate then
+        if live and not live:GetAttribute("JxH_Custom") then
+            St._pristineAnimate:Destroy(); St._pristineAnimate=live:Clone(); St._pristineAnimate.Disabled=true
         end
-        St._snowConns=nil
+        return St._pristineAnimate
     end
-    if St._snowTracks then
-        for _,t in pairs(St._snowTracks) do
-            pcall(function() t:Stop(0.2) end)
+    if not live then return nil end
+    local pristine=live:Clone(); pristine.Disabled=true
+    St._pristineAnimate=pristine; St._pristineAnimateChar=char
+    return pristine
+end
+function F._injectAnim(scr,set)
+    for cat,items in pairs(set) do
+        local catInst=scr:FindFirstChild(cat)
+        if catInst then
+            for childName,id in pairs(items) do
+                local child=catInst:FindFirstChild(childName)
+                if not child then
+                    child=Instance_new("Animation"); child.Name=childName; child.Parent=catInst
+                end
+                if child:IsA("Animation") then child.AnimationId=id
+                elseif child:IsA("StringValue") then child.Value=id end
+            end
         end
-        St._snowTracks=nil
     end
 end
-function F.applySnowAnims(char)
-    if not char then return end
-    if F.getMyTeamType()=="killer" then
-        F.stopSnowAnimation(true)
-        return
-    end
+function F._cleanCustomAnim()
+    if St._customAnimConn then St._customAnimConn:Disconnect(); St._customAnimConn=nil end
+end
+function F.applyCustomAnim(char,which)
+    if not char or not _ANIM_SETS[which] then return end
+    if F.getMyTeamType()=="killer" then F.stopCustomAnim(char,true); return end
     local hum=char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
-    local animator=hum:FindFirstChildOfClass("Animator")
-    if not animator then return end
-    F.stopSnowAnimation(true)
-    local animateScript=char:FindFirstChild("Animate")
-    if animateScript then animateScript.Disabled=true end
-    for _,track in ipairs(animator:GetPlayingAnimationTracks()) do
-        pcall(function() track:Stop(0) end)
-    end
-    local function loadAnim(id,looped)
-        local anim=Instance_new("Animation")
-        anim.AnimationId=id
-        local track=animator:LoadAnimation(anim)
-        track.Priority=Enum.AnimationPriority.Movement
-        track.Looped=looped
-        return track
-    end
-    St._snowTracks={
-        idle=loadAnim(_SNOW_IDLE,true),
-        run=loadAnim(_SNOW_RUN,true),
-        jump=loadAnim(_SNOW_JUMP,false),
-        climb=loadAnim(_SNOW_CLIMB,true),
-        swim=loadAnim(_SNOW_SWIM,true)
-    }
-    local currentTrack=nil
-    local function playTrack(trackName,transition)
-        local track=St._snowTracks[trackName]
-        if currentTrack==track then return end
-        if currentTrack then currentTrack:Stop(transition or 0.2) end
-        currentTrack=track
-        if track then track:Play(transition or 0.2) end
-    end
-    local function updateState()
-        if F.isPlayerDowned(Sv.LocalPlayer) then
-            if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
-            return
-        end
-        local state=hum:GetState()
-        if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then
-            playTrack("jump",0)
-        elseif state==Enum.HumanoidStateType.Climbing then
-            playTrack("climb")
-        elseif state==Enum.HumanoidStateType.Swimming then
-            playTrack("swim")
-        elseif state==Enum.HumanoidStateType.Landed or state==Enum.HumanoidStateType.Running or state==Enum.HumanoidStateType.RunningNoPhysics then
-            if hum.MoveDirection.Magnitude>0 then
-                playTrack("run")
-            else
-                playTrack("idle")
-            end
-        else
-            playTrack("idle")
-        end
-    end
-    local wasDown=false
-    local stateConn=hum.StateChanged:Connect(function(_,newState)
-        if F.isPlayerDowned(Sv.LocalPlayer) then
-            wasDown=true
-            if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
-            return
-        end
-        if newState==Enum.HumanoidStateType.GettingUp then
-            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
-            return
-        end
-        if wasDown then
-            wasDown=false
-            if currentTrack then currentTrack:Stop(0); currentTrack=nil end
-            task.delay(0.15,function()
-                if St.Settings.SnowAnimation then
-                    local c=Sv.LocalPlayer.Character
-                    if c then F.applySnowAnims(c) end
-                end
-            end)
-            return
-        end
-        updateState()
+    local pristine=F._getPristineAnimate(char)
+    if not pristine then return end
+    F._cleanCustomAnim()
+    local live=char:FindFirstChild("Animate")
+    local newScript=pristine:Clone()
+    F._injectAnim(newScript,_ANIM_SETS[which])
+    newScript:SetAttribute("JxH_Custom",true)
+    if live then live:Destroy() end
+    newScript.Disabled=F.isPlayerDowned(Sv.LocalPlayer)
+    newScript.Parent=char
+    St._customAnimConn=hum.StateChanged:Connect(function()
+        if newScript.Parent then newScript.Disabled=F.isPlayerDowned(Sv.LocalPlayer) end
     end)
-    local runConn=hum.Running:Connect(function(speed)
-        if F.isPlayerDowned(Sv.LocalPlayer) then
-            if currentTrack then currentTrack:Stop(0.2); currentTrack=nil end
-            return
-        end
-        local state=hum:GetState()
-        if state==Enum.HumanoidStateType.Freefall or state==Enum.HumanoidStateType.Jumping then return end
-        if speed>0.5 then
-            playTrack("run")
-            pcall(function() St._snowTracks.run:AdjustSpeed(math_max(0.5,math_min(2,speed/16))) end)
-        else
-            playTrack("idle")
-        end
-    end)
-    St._snowConns={stateConn,runConn}
-    updateState()
 end
-function F.stopSnowAnimation(keepSetting)
-    if not keepSetting then St.Settings.SnowAnimation=false end
-    if St.Cn.snowRefresh then St.Cn.snowRefresh:Disconnect(); St.Cn.snowRefresh=nil end
-    F._cleanSnowState()
-    local char=Sv.LocalPlayer.Character
-    if char then
-        local animateScript=char:FindFirstChild("Animate")
-        if animateScript then animateScript.Disabled=false end
+function F.stopCustomAnim(char,keepSetting)
+    if not keepSetting then
+        for _,sName in pairs(_ANIM_TOGGLES) do St.Settings[sName]=false end
     end
+    F._cleanCustomAnim()
+    if not char then return end
+    local live=char:FindFirstChild("Animate")
+    if live and live:GetAttribute("JxH_Custom") and St._pristineAnimateChar==char and St._pristineAnimate then
+        local restored=St._pristineAnimate:Clone()
+        live:Destroy(); restored.Disabled=false; restored.Parent=char
+    end
+end
+function F.getActiveAnim()
+    for key,sName in pairs(_ANIM_TOGGLES) do
+        if St.Settings[sName] then return key end
+    end
+    return nil
+end
+function F.setActiveAnim(which)
+    local char=Sv.LocalPlayer.Character
+    for key,sName in pairs(_ANIM_TOGGLES) do
+        if key~=which and St.Settings[sName] then
+            St.Settings[sName]=false
+            if St.toggleRefs[sName] then St.toggleRefs[sName](false) end
+        end
+    end
+    if which then F.applyCustomAnim(char,which) else F.stopCustomAnim(char,true) end
 end
 local _fpsBoostOriginals={qualityLevel=nil,globalShadows=nil,atmospheres={},particles={}}
 function F.startFpsBoost()
@@ -2353,7 +2327,7 @@ function F.restartEnabledCommands()
     if St.Settings.AntiAFK then F.startAntiAFK() end
     if St.Settings.LootESP then F.updateLootESP() end
     if St.Settings.ExitESP then F.updateExitESP() end
-    if St.Settings.SnowAnimation then F.applySnowAnims(Sv.LocalPlayer.Character) end
+    do local _aw=F.getActiveAnim(); if _aw then F.applyCustomAnim(Sv.LocalPlayer.Character,_aw) end end
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
 end
 UI.C={
@@ -2809,6 +2783,7 @@ local _LANG={
         tog_double_jump="Double Jump", tog_inf_jump="Infinite Jump", tog_noclip="Noclip",
         tog_fly="Fly", tog_speed_boost="Speed Boost", tog_anti_afk="Anti AFK",
         tog_remove_fog="Remove Fog", tog_snow_anim="Snow Animation", tog_anti_void="Anti-Void",
+        tog_royal_anim="Royal Stride Animation", tog_ninja_anim="Ninja Animation",
         tog_ghost_mode="Ghost Mode", tog_hitbox="Hitbox", tog_fps_boost="FPS Boost",
         sec_fpsboost="FPS BOOST", tog_ads="Show Ads",
         sl_name_offset="Name Offset", sl_dist_offset="Dist Offset", sl_heart_size="Heart Size",
@@ -2872,6 +2847,7 @@ local _LANG={
         tog_double_jump="Двойной прыжок", tog_inf_jump="Беск. прыжок", tog_noclip="Нет коллизий",
         tog_fly="Полёт", tog_speed_boost="Ускорение", tog_anti_afk="Анти-АФК",
         tog_remove_fog="Убрать туман", tog_snow_anim="Снежная анимация", tog_anti_void="Анти-Пустота",
+        tog_royal_anim="Королевская походка", tog_ninja_anim="Анимация ниндзя",
         tog_ghost_mode="Режим призрака", tog_hitbox="Хитбокс", tog_fps_boost="FPS Boost",
         sec_fpsboost="FPS BOOST", tog_ads="Показ рекл.",
         sl_name_offset="Смещ. имени", sl_dist_offset="Смещ. дист.", sl_heart_size="Размер сердца",
@@ -3324,7 +3300,7 @@ local function buildUI()
         St.Fl.autoFarmRunning=false; St.Fl.killAllRunning=false; St.Settings.SpeedEnabled=false
         if St.Cn.speed then St.Cn.speed:Disconnect(); St.Cn.speed=nil end
         F.stopAutoEscape(); F.stopKillerSafety(); F.stopNoclip(); F.stopAntiAFK(); F.disableFogRemoval()
-        F.stopAutoRevive(); F.stopAutoSelfRevive(); F.stopFly(); F.stopSnowAnimation()
+        F.stopAutoRevive(); F.stopAutoSelfRevive(); F.stopFly(); F.stopCustomAnim(Sv.LocalPlayer.Character)
         F.stopFpsBoost()
         if St.Fl.ghostActive then F.toggleGhostMode(false) end
         St.Fl.reviveSelfPaused=false; St.Fl.farmPriority=0
@@ -4068,7 +4044,9 @@ local function buildUI()
         local eGrid=UI.makeGridContainer(settPage)
         UI.A(settPage,eGrid)
         UI.makeToggle(eGrid,"RemoveFog",_T("tog_remove_fog"),function(on) if on then F.enableFogRemoval() else F.disableFogRemoval() end end,"tog_remove_fog")
-        UI.makeToggle(eGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) if on then F.applySnowAnims(Sv.LocalPlayer.Character) else F.stopSnowAnimation() end end,"tog_snow_anim")
+        UI.makeToggle(eGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) F.setActiveAnim(on and "Snowman" or nil) end,"tog_snow_anim")
+        UI.makeToggle(eGrid,"RoyalAnimation",_T("tog_royal_anim"),function(on) F.setActiveAnim(on and "Royal" or nil) end,"tog_royal_anim")
+        UI.makeToggle(eGrid,"NinjaAnimation",_T("tog_ninja_anim"),function(on) F.setActiveAnim(on and "Ninja" or nil) end,"tog_ninja_anim")
         UI.makeToggle(eGrid,"AntiVoid",_T("tog_anti_void"),nil,"tog_anti_void")
         UI.makeToggle(eGrid,"AntiAFK",_T("tog_anti_afk"),function(on) if on then F.startAntiAFK() else F.stopAntiAFK() end end,"tog_anti_afk")
         UI.makeToggle(eGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
@@ -4670,7 +4648,7 @@ local function init()
         if St.Settings.LootESP then F.updateLootESP() end
         if St.Settings.ExitESP then F.updateExitESP() end
         if St.Settings.ShowCoins and St.CoinsHUD_ref then St.CoinsHUD_ref.Visible=true end
-        if St.Settings.SnowAnimation then F.applySnowAnims(Sv.LocalPlayer.Character) end
+        do local _aw=F.getActiveAnim(); if _aw then F.applyCustomAnim(Sv.LocalPlayer.Character,_aw) end end
         if St.Settings.ShiftLock then F.startShiftLock() end
         if F.getMyTeamType()~="lobby" then task.wait(0.5); F.restartEnabledCommands() end
     end)
@@ -4746,7 +4724,7 @@ local function init()
             if St.Settings._killAll then F.startKillAll() end
         end
         if St.Settings.InfiniteJump then F.startInfiniteJump() end
-        if St.Settings.SnowAnimation then F.applySnowAnims(char) end
+        do local _aw=F.getActiveAnim(); if _aw then F.applyCustomAnim(char,_aw) end end
         if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
         if St.Settings.ShiftLock then F.startShiftLock() end
         _startVoidSafetyBG()
