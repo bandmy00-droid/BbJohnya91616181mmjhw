@@ -157,7 +157,8 @@ local _ROBLOX_ICONS={
     ["Telegram.png"]="rbxthumb://type=Asset&id=86445606186301&w=420&h=420",
     ["Home.png"]="rbxthumb://type=Asset&id=102444249610138&w=420&h=420",
     ["English.jpg"]="rbxthumb://type=Asset&id=105735635413663&w=420&h=420",
-    ["Russian.jpg"]="rbxthumb://type=Asset&id=95543406783515&w=420&h=420"
+    ["Russian.jpg"]="rbxthumb://type=Asset&id=95543406783515&w=420&h=420",
+    ["Arabic.jpg"]="rbxthumb://type=Asset&id=135608817445851&w=420&h=420"
 }
 local function setPrivateImage(img,filename)
     pcall(function()
@@ -1607,7 +1608,7 @@ function F.startKillAll()
                 end
             end
         end
-        St.Fl.killAllRunning=false; St.Settings._killAll=false
+        St.Fl.killAllRunning=false
     end)
 end
 local VEC3_NORM_HRP=Vector3_new(2,2,1)
@@ -2767,7 +2768,7 @@ local _LANG={
         sec_autofarm="AUTO FARM", sec_revive="REVIVE",
         sec_safety="SAFETY", sec_killer="KILLER",
         close_script="CLOSE SCRIPT", preset_lbl="Preset",
-        uptime="Uptime", ping_card="Ping",
+        uptime="Uptime", ping_card="Ping", team_lbl="Team",
         farm_success="Collected", farm_fail="Errors",
         farm_escapes="Escapes", farm_coins="Coins",
         toast_started="Script Loaded  v6.1",
@@ -2831,7 +2832,7 @@ local _LANG={
         sec_autofarm="АВТОФАРМ", sec_revive="ВОСКРЕШЕНИЕ",
         sec_safety="ЗАЩИТА", sec_killer="УБИЙЦА",
         close_script="ЗАКРЫТЬ СКРИПТ", preset_lbl="Пресет",
-        uptime="Время работы", ping_card="Пинг",
+        uptime="Время работы", ping_card="Пинг", team_lbl="Команда",
         farm_success="Собрано", farm_fail="Ошибки",
         farm_escapes="Побеги", farm_coins="Монеты",
         toast_started="Скрипт загружен  v6.1",
@@ -2868,6 +2869,70 @@ local _LANG={
         revive_self_btn="Поднять себя  GO",
         tp_exit_btn="Телепорт к выходу  GO",
         tp_survivor_btn="Случайный выживший  TP"
+    },
+    AR={
+        home_tab="الرئيسية", esp_tab="المظهر", farm_tab="الفارم التلقائي", sett_tab="الإعدادات",
+        player_info="معلومات اللاعب",
+        credits="JohnyX Script",
+        credits_sub="بواسطة @G_p0z  •  v6.1",
+        motto="لسنا الوحيدين، لكننا الأفضل",
+        fps_lbl="FPS", ping_lbl="بينج",
+        status_ok="الحالة: غير مكتشف",
+        status_detected="الحالة: مكتشف",
+        server_tools="أدوات السيرفر",
+        rejoin_lbl="إعادة الانضمام للسيرفر", rejoin_btn="GO",
+        hop_lbl="تغيير السيرفر", hop_btn="HOP",
+        advanced="متقدم",
+        lang_toggle="اللغة",
+        sec_char_move="الشخصية والحركة",
+        sec_env_util="البيئة والأدوات",
+        sec_ui_cust="تخصيص الواجهة",
+        sec_server_links="السيرفر والروابط",
+        sec_movement="الحركة", sec_speed="السرعة",
+        sec_utility="الأدوات", sec_visuals="المظهر",
+        sec_links="الروابط", sec_uisize="حجم الواجهة", sec_winsize="حجم النافذة", sec_transparency="الشفافية",
+        sec_player="اللاعب", sec_lives="متتبع الأرواح",
+        sec_world="العالم", sec_hud="HUD",
+        sec_autofarm="الفارم التلقائي", sec_revive="الإحياء",
+        sec_safety="الحماية", sec_killer="القاتل",
+        close_script="إغلاق السكربت", preset_lbl="إعداد مسبق",
+        uptime="مدة التشغيل", ping_card="بينج", team_lbl="الفريق",
+        farm_success="تم الجمع", farm_fail="الأخطاء",
+        farm_escapes="مرات الهروب", farm_coins="العملات",
+        toast_started="تم تحميل السكربت  v6.1",
+        toast_farm_on="الفارم التلقائي: تشغيل",
+        toast_farm_off="الفارم التلقائي: إيقاف",
+        toast_rejoin="إعادة الانضمام...",
+        toast_hop="البحث عن سيرفر...",
+        tog_player_esp="كشف اللاعبين", tog_show_names="إظهار الأسماء", tog_show_dist="إظهار المسافة",
+        tog_lives_esp="كشف الأرواح", tog_exit_esp="كشف المخارج", tog_loot_esp="كشف اللوت",
+        tog_coins_disp="عرض العملات",
+        tog_farm_loot="جمع اللوت", tog_auto_revive="إحياء تلقائي", tog_self_revive="إحياء الذات",
+        tog_killer_safe="الحماية من القاتل", tog_auto_escape="هروب تلقائي", tog_kill_all="قتل الجميع",
+        tog_double_jump="قفزة مزدوجة", tog_inf_jump="قفز لا نهائي", tog_noclip="بلا تصادم",
+        tog_fly="الطيران", tog_speed_boost="تعزيز السرعة", tog_anti_afk="منع الخمول",
+        tog_remove_fog="إزالة الضباب", tog_snow_anim="انميشن الثلج", tog_anti_void="الحماية من الفراغ",
+        tog_royal_anim="انميشن الخطوة الملكية", tog_ninja_anim="انميشن النينجا",
+        tog_ghost_mode="وضع الشبح", tog_hitbox="الهيت بوكس", tog_fps_boost="تعزيز FPS",
+        sec_fpsboost="تعزيز FPS", tog_ads="عرض الإعلانات",
+        sl_name_offset="إزاحة الاسم", sl_dist_offset="إزاحة المسافة", sl_heart_size="حجم القلب",
+        sl_hitbox_dist="مسافة الهيت بوكس",
+        sl_height="الارتفاع", sl_tilt="الميل", sl_min_value="أقل قيمة",
+        sl_fly_speed="سرعة الطيران", sl_speed="السرعة", sl_safety_dist="مسافة الحماية",
+        sl_farm_speed="سرعة الفارم",
+        theme_lbl="ثيم الواجهة",
+        confirm_close="هل أنت متأكد أنك تريد الإغلاق؟",
+        btn_yes="نعم", btn_no="لا",
+        ghost_farm_warn="عطّل ميزات الفارم لاستخدام وضع الشبح!",
+        font_lbl="الخط",
+        lock_btn="قفل", unlock_btn="فتح القفل",
+        hud_toggle_btn="FPS / بينج  HUD",
+        copy_btn=" نسخ",
+        toast_copied="  تم نسخ الرابط!",
+        tog_shift_lock="تثبيت الكاميرا",
+        revive_self_btn="إحياء نفسي  GO",
+        tp_exit_btn="انتقال للمخرج  GO",
+        tp_survivor_btn="ناجي عشوائي  TP"
     }
 }
 _T=function(k) return (_LANG[St.Language] or _LANG.EN)[k] or k end
@@ -3622,9 +3687,10 @@ local function buildUI()
         local serverRow=Instance_new("Frame"); serverRow.Parent=homePage
         serverRow.Size=UDim2_new(1,0,0,52); serverRow.BackgroundTransparency=1; serverRow.BorderSizePixel=0
         UI.A(homePage,serverRow)
-        local _,pingValLbl=_makeStatCard(serverRow,"ping_card","--ms",Color3_fromRGB(80,160,255),1,3)
-        local _,fpsValLbl=_makeStatCard(serverRow,"fps_lbl","--",Color3_fromRGB(100,255,100),2,3)
-        local _,uptimeLbl=_makeStatCard(serverRow,"uptime","00:00",Color3_fromRGB(180,140,255),3,3)
+        local _,pingValLbl=_makeStatCard(serverRow,"ping_card","--ms",Color3_fromRGB(80,160,255),1,4)
+        local _,fpsValLbl=_makeStatCard(serverRow,"fps_lbl","--",Color3_fromRGB(100,255,100),2,4)
+        local _,uptimeLbl=_makeStatCard(serverRow,"uptime","00:00",Color3_fromRGB(180,140,255),3,4)
+        local _,teamValLbl=_makeStatCard(serverRow,"team_lbl","--",Color3_fromRGB(255,210,90),4,4)
         local serverHRow=Instance_new("Frame"); serverHRow.Parent=homePage
         serverHRow.Size=UDim2_new(1,0,0,56); serverHRow.BackgroundTransparency=1; serverHRow.BorderSizePixel=0
         UI.A(homePage,serverHRow)
@@ -3762,6 +3828,11 @@ local function buildUI()
                 local m = _mfloor(elapsed / 60)
                 local s = elapsed % 60
                 if uptimeLbl and uptimeLbl.Parent then uptimeLbl.Text = string.format("%02d:%02d", m, s) end
+                if teamValLbl and teamValLbl.Parent then
+                    local ttp = F.getMyTeamType()
+                    teamValLbl.Text = ttp:upper()
+                    teamValLbl.TextColor3 = ttp=="killer" and UI.C.DANGER or ttp=="survivor" and UI.C.GOOD or Color3_fromRGB(255,210,90)
+                end
                 if farmSuccessLbl and farmSuccessLbl.Parent then
                     farmSuccessLbl.Text = _tostr(_Analytics.farmSuccess)
                     farmFailLbl.Text = _tostr(_Analytics.farmFail)
@@ -4073,7 +4144,7 @@ local function buildUI()
             lrLbl.TextXAlignment=Enum.TextXAlignment.Left
             _LR(lrLbl,"lang_toggle")
             local enContainer=Instance_new("Frame"); enContainer.Parent=langRow
-            enContainer.Size=UDim2_new(0,62,0,42); enContainer.Position=UDim2_new(1,-137,0.5,-21)
+            enContainer.Size=UDim2_new(0,62,0,42); enContainer.Position=UDim2_new(1,-205,0.5,-21)
             enContainer.BackgroundTransparency=1; enContainer.BorderSizePixel=0
             local enBorder=Instance_new("Frame"); enBorder.Parent=enContainer
             enBorder.Size=UDim2_new(1,0,1,0); enBorder.BackgroundColor3=UI.C.ACCENT; enBorder.BorderSizePixel=0
@@ -4094,7 +4165,7 @@ local function buildUI()
             enTxt.TextColor3=Color3_new(1,1,1); enTxt.Font=Enum.Font.GothamBold; enTxt.TextSize=9
             enTxt.TextXAlignment=Enum.TextXAlignment.Center
             local ruContainer=Instance_new("Frame"); ruContainer.Parent=langRow
-            ruContainer.Size=UDim2_new(0,62,0,42); ruContainer.Position=UDim2_new(1,-69,0.5,-21)
+            ruContainer.Size=UDim2_new(0,62,0,42); ruContainer.Position=UDim2_new(1,-137,0.5,-21)
             ruContainer.BackgroundTransparency=1; ruContainer.BorderSizePixel=0
             local ruBorder=Instance_new("Frame"); ruBorder.Parent=ruContainer
             ruBorder.Size=UDim2_new(1,0,1,0); ruBorder.BackgroundColor3=UI.C.ACCENT; ruBorder.BorderSizePixel=0
@@ -4114,9 +4185,31 @@ local function buildUI()
             ruTxt.BackgroundTransparency=1; ruTxt.Text="Russian"
             ruTxt.TextColor3=Color3_new(1,1,1); ruTxt.Font=Enum.Font.GothamBold; ruTxt.TextSize=9
             ruTxt.TextXAlignment=Enum.TextXAlignment.Center
+            local arContainer=Instance_new("Frame"); arContainer.Parent=langRow
+            arContainer.Size=UDim2_new(0,62,0,42); arContainer.Position=UDim2_new(1,-69,0.5,-21)
+            arContainer.BackgroundTransparency=1; arContainer.BorderSizePixel=0
+            local arBorder=Instance_new("Frame"); arBorder.Parent=arContainer
+            arBorder.Size=UDim2_new(1,0,1,0); arBorder.BackgroundColor3=UI.C.ACCENT; arBorder.BorderSizePixel=0
+            UI.registerTheme(arBorder,"ACCENT","BackgroundColor3")
+            local arBCrn=Instance_new("UICorner"); arBCrn.Parent=arBorder; arBCrn.CornerRadius=UDim_new(0,7)
+            local arBtn=Instance_new("TextButton"); arBtn.Parent=arContainer
+            arBtn.Size=UDim2_new(1,-2,1,-2); arBtn.Position=UDim2_new(0,1,0,1)
+            arBtn.BackgroundColor3=UI.C.OFF; arBtn.Text=""; arBtn.BorderSizePixel=0
+            UI.registerTheme(arBtn,"OFF","BackgroundColor3")
+            local arCrn=Instance_new("UICorner"); arCrn.Parent=arBtn; arCrn.CornerRadius=UDim_new(0,6)
+            local arImg=Instance_new("ImageLabel"); arImg.Parent=arBtn
+            arImg.Size=UDim2_new(0,20,0,14); arImg.Position=UDim2_new(0.5,-10,0,6)
+            arImg.BackgroundTransparency=1; arImg.ScaleType=Enum.ScaleType.Fit
+            setPrivateImage(arImg,"Arabic.jpg")
+            local arTxt=Instance_new("TextLabel"); arTxt.Parent=arBtn
+            arTxt.Size=UDim2_new(1,0,0,14); arTxt.Position=UDim2_new(0,0,0,22)
+            arTxt.BackgroundTransparency=1; arTxt.Text="Arabic"
+            arTxt.TextColor3=Color3_new(1,1,1); arTxt.Font=Enum.Font.GothamBold; arTxt.TextSize=9
+            arTxt.TextXAlignment=Enum.TextXAlignment.Center
             local function _updateLangBtns()
                 enBorder.Visible=(St.Language=="EN")
                 ruBorder.Visible=(St.Language=="RU")
+                arBorder.Visible=(St.Language=="AR")
             end
             _updateLangBtns()
             enBtn.MouseButton1Click:Connect(function()
@@ -4124,6 +4217,9 @@ local function buildUI()
             end)
             ruBtn.MouseButton1Click:Connect(function()
                 St.Language="RU"; _applyLang(); _updateLangBtns(); task.defer(F.saveSettings)
+            end)
+            arBtn.MouseButton1Click:Connect(function()
+                St.Language="AR"; _applyLang(); _updateLangBtns(); task.defer(F.saveSettings)
             end)
             St.UIRefs._updateLangBtns=_updateLangBtns
             UI.A(settPage,langRow)
@@ -4597,6 +4693,7 @@ local function _wipeExecutorWorkspaceOnce()
     pcall(writefile,_EXEC_WORKSPACE_MARKER,"1")
 end
 local function init()
+    if game.PlaceId~=4580204640 then return end
     pcall(function()
         local _callerWorks=false
         pcall(function() _callerWorks=(checkcaller()==true) end)
@@ -4696,6 +4793,7 @@ local function init()
             end
         elseif teamType=="survivor" or teamType=="killer" then
             _startVoidSafetyBG()
+            if teamType=="killer" and F.getActiveAnim() then F.stopCustomAnim(Sv.LocalPlayer.Character,true) end
             task.spawn(function() task.wait(1.5); F.restartEnabledCommands() end)
         end
     end)
