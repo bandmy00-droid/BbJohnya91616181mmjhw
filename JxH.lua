@@ -158,9 +158,9 @@ local _ROBLOX_ICONS={
     ["JXPhoTHO.png"]="rbxthumb://type=Asset&id=138627690193651&w=420&h=420",
     ["Telegram.png"]="rbxthumb://type=Asset&id=86445606186301&w=420&h=420",
     ["Home.png"]="rbxthumb://type=Asset&id=102444249610138&w=420&h=420",
-    ["English.jpg"]="rbxassetid://105735635413663",
-    ["Russian.jpg"]="rbxassetid://95543406783515",
-    ["Arabic.jpg"]="rbxassetid://135608817445851"
+    ["English.jpg"]="rbxthumb://type=Asset&id=105735635413663&w=420&h=420",
+    ["Russian.jpg"]="rbxthumb://type=Asset&id=95543406783515&w=420&h=420",
+    ["Arabic.jpg"]="rbxthumb://type=Asset&id=135608817445851&w=420&h=420"
 }
 local function setPrivateImage(img,filename)
     pcall(function()
