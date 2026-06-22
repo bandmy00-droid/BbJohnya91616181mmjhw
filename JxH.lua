@@ -1,6 +1,7 @@
 local UPDATE_VERSION = "V6.1"
-local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm & UI bugs fixed \n2. 🎨 <b>Improved:</b> Pure OLED black theme + full RU translation \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
-local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> Ошибки ESP лута, Автофарма и интерфейса \n2. 🎨 <b>Улучшено:</b> Чистая чёрная OLED-тема и полный перевод RU \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
+local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm, Kill All & UI bugs fixed \n2. ✨ <b>New:</b> Arabic language, new animations & OLED black theme \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
+local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> ESP лута/Автофарм, Kill All и ошибки интерфейса \n2. ✨ <b>Новое:</b> Арабский язык, новые анимации и чёрная OLED-тема \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
+local UPDATE_TEXT_AR = "1. 🛠️ <b>تم الإصلاح:</b> كشف اللوت/الفارم، Kill All ومشاكل الواجهة \n2. ✨ <b>جديد:</b> اللغة العربية، انميشنات جديدة، وثيم أسود OLED \n3. 🐛 <b>إصلاح أخطاء</b> \n4. 🎨 <b>تحسين الثيم</b> \n5. 🌫️ <b>تحسين إزالة الضباب</b> \n6. 🚀 <b>تحسينات أخرى</b> "
 local math_floor=math.floor
 local math_max=math.max
 local math_min=math.min
@@ -22,14 +23,15 @@ local Sv={
     Lighting=game:GetService("Lighting"),
     HttpService=game:GetService("HttpService"),
     Stats=game:GetService("Stats"),
-    SoundService=game:GetService("SoundService")
+    SoundService=game:GetService("SoundService"),
+    TextService=game:GetService("TextService")
 }
 Sv.LocalPlayer=Sv.Players.LocalPlayer
 local St={
     _imageCache={},
     _imgMap=setmetatable({},{__mode="k"}),
     _imgByFile={},
-    ALL_ASSETS={"Heart.png","CoINs.png","Farm.png","setting.png","esp.png","JXPhoTHO.png","Telegram.png","Home.png","English.jpg","Russian.jpg"},
+    ALL_ASSETS={"Heart.png","CoINs.png","Farm.png","setting.png","esp.png","JXPhoTHO.png","Telegram.png","Home.png","English.jpg","Russian.jpg","Arabic.jpg"},
     DOUBLE_JUMP_ANIM_ID="rbxassetid://4643151469",
     MIN_LOOT_VALUE=1,
     farmCollectDelay=3.16,
@@ -156,9 +158,9 @@ local _ROBLOX_ICONS={
     ["JXPhoTHO.png"]="rbxthumb://type=Asset&id=138627690193651&w=420&h=420",
     ["Telegram.png"]="rbxthumb://type=Asset&id=86445606186301&w=420&h=420",
     ["Home.png"]="rbxthumb://type=Asset&id=102444249610138&w=420&h=420",
-    ["English.jpg"]="rbxthumb://type=Asset&id=105735635413663&w=420&h=420",
-    ["Russian.jpg"]="rbxthumb://type=Asset&id=95543406783515&w=420&h=420",
-    ["Arabic.jpg"]="rbxthumb://type=Asset&id=135608817445851&w=420&h=420"
+    ["English.jpg"]="rbxassetid://105735635413663",
+    ["Russian.jpg"]="rbxassetid://95543406783515",
+    ["Arabic.jpg"]="rbxassetid://135608817445851"
 }
 local function setPrivateImage(img,filename)
     pcall(function()
@@ -2394,7 +2396,12 @@ local function _nextToast(sg)
     if _toastActive or #_toastQueue==0 then return end
     _toastActive=true
     local msg=table.remove(_toastQueue,1)
-    local TW,TH=224,36
+    local font,fontSize=Enum.Font.GothamSemibold,10
+    local minW,maxW,padW=180,300,46
+    local measured=Sv.TextService:GetTextSize(msg,fontSize,font,Vector2.new(10000,100))
+    local wrapped=measured.X+padW>maxW
+    local TW=math_max(minW,math_min(measured.X+padW,maxW))
+    local TH=wrapped and 48 or 36
     local toast=Instance_new("Frame"); toast.Parent=sg
     toast.Size=UDim2_new(0,TW,0,TH); toast.Position=UDim2_new(1,12,1,-TH-14)
     toast.BackgroundColor3=Color3_fromRGB(10,12,20); toast.BackgroundTransparency=0.08
@@ -2413,8 +2420,10 @@ local function _nextToast(sg)
     lbl.BackgroundTransparency=1; lbl.Text=msg
     lbl.TextColor3=Color3_new(1,1,1)
     UI.registerTheme(lbl,"TEXT","TextColor3")
-    lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=10; lbl.ZIndex=200
-    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.TextTransparency=1
+    lbl.Font=font; lbl.TextSize=fontSize; lbl.ZIndex=200
+    lbl.TextWrapped=wrapped
+    lbl.TextXAlignment=St.Language=="AR" and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+    lbl.TextYAlignment=Enum.TextYAlignment.Center; lbl.TextTransparency=1
     local progBg=Instance_new("Frame"); progBg.Parent=toast
     progBg.Size=UDim2_new(1,-8,0,2); progBg.Position=UDim2_new(0,4,1,-4)
     progBg.BackgroundColor3=Color3_fromRGB(25,28,45); progBg.BorderSizePixel=0; progBg.ZIndex=200
@@ -2768,7 +2777,7 @@ local _LANG={
         sec_autofarm="AUTO FARM", sec_revive="REVIVE",
         sec_safety="SAFETY", sec_killer="KILLER",
         close_script="CLOSE SCRIPT", preset_lbl="Preset",
-        uptime="Uptime", ping_card="Ping", team_lbl="Team",
+        uptime="Uptime", ping_card="Ping",
         farm_success="Collected", farm_fail="Errors",
         farm_escapes="Escapes", farm_coins="Coins",
         toast_started="Script Loaded  v6.1",
@@ -2832,7 +2841,7 @@ local _LANG={
         sec_autofarm="АВТОФАРМ", sec_revive="ВОСКРЕШЕНИЕ",
         sec_safety="ЗАЩИТА", sec_killer="УБИЙЦА",
         close_script="ЗАКРЫТЬ СКРИПТ", preset_lbl="Пресет",
-        uptime="Время работы", ping_card="Пинг", team_lbl="Команда",
+        uptime="Время работы", ping_card="Пинг",
         farm_success="Собрано", farm_fail="Ошибки",
         farm_escapes="Побеги", farm_coins="Монеты",
         toast_started="Скрипт загружен  v6.1",
@@ -2896,7 +2905,7 @@ local _LANG={
         sec_autofarm="الفارم التلقائي", sec_revive="الإحياء",
         sec_safety="الحماية", sec_killer="القاتل",
         close_script="إغلاق السكربت", preset_lbl="إعداد مسبق",
-        uptime="مدة التشغيل", ping_card="بينج", team_lbl="الفريق",
+        uptime="مدة التشغيل", ping_card="بينج",
         farm_success="تم الجمع", farm_fail="الأخطاء",
         farm_escapes="مرات الهروب", farm_coins="العملات",
         toast_started="تم تحميل السكربت  v6.1",
@@ -3329,18 +3338,8 @@ local function buildUI()
         newY=math.clamp(newY,0,limitY)
         MainFrame.Position=UDim2_new(0,newX,0,newY)
     end)
-    local BADGE_H=20
-    local TeamBadge=Instance_new("TextLabel"); TeamBadge.Parent=MainFrame
-    TeamBadge.Size=UDim2_new(1,0,0,BADGE_H); TeamBadge.Position=UDim2_new(0,0,0,TITLE_H)
-    TeamBadge.BackgroundColor3=UI.C.ROW; TeamBadge.BorderSizePixel=0
-    UI.registerTheme(TeamBadge,"ROW","BackgroundColor3")
-    TeamBadge.BackgroundTransparency=0.75
-    TeamBadge.Text="LOBBY"; TeamBadge.TextColor3=Color3_new(1,1,1)
-    TeamBadge.Font=Enum.Font.GothamBold; TeamBadge.TextSize=10
-    TeamBadge.TextXAlignment=Enum.TextXAlignment.Center
-    St.UIRefs.teamBadge=TeamBadge
     local SIDEBAR_W=82
-    local BODY_TOP=TITLE_H+BADGE_H+2
+    local BODY_TOP=TITLE_H+2
     local Sidebar=Instance_new("Frame"); Sidebar.Parent=MainFrame
     Sidebar.Size=UDim2_new(0,SIDEBAR_W,1,-BODY_TOP)
     Sidebar.Position=UDim2_new(0,0,0,BODY_TOP)
@@ -3592,6 +3591,29 @@ local function buildUI()
         local ccStr=Instance_new("UIStroke"); ccStr.Parent=credCard
         ccStr.Color=UI.C.ACCENT; ccStr.Thickness=0.8; ccStr.Transparency=0.3
         UI.registerTheme(ccStr,"ACCENT","Color")
+        local ccGrad=Instance_new("UIGradient"); ccGrad.Parent=ccStr
+        ccGrad.Color=ColorSequence.new({
+            ColorSequenceKeypoint.new(0,Color3_fromRGB(255,255,255)),
+            ColorSequenceKeypoint.new(0.5,Color3_fromRGB(190,210,255)),
+            ColorSequenceKeypoint.new(1,Color3_fromRGB(255,255,255))
+        })
+        ccGrad.Transparency=NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0.8),
+            NumberSequenceKeypoint.new(0.5,0.2),
+            NumberSequenceKeypoint.new(1,0.8)
+        })
+        ccGrad.Rotation=90
+        local ccGlow=Instance_new("Frame"); ccGlow.Parent=credCard
+        ccGlow.Size=UDim2_new(1,-20,0,2); ccGlow.Position=UDim2_new(0,10,0,0)
+        ccGlow.BackgroundColor3=UI.C.ACCENT; ccGlow.BorderSizePixel=0; ccGlow.ZIndex=credCard.ZIndex+1
+        UI.registerTheme(ccGlow,"ACCENT","BackgroundColor3")
+        local ccGlowGrad=Instance_new("UIGradient"); ccGlowGrad.Parent=ccGlow
+        ccGlowGrad.Transparency=NumberSequence.new({
+            NumberSequenceKeypoint.new(0,1),
+            NumberSequenceKeypoint.new(0.5,0.45),
+            NumberSequenceKeypoint.new(1,1)
+        })
+        local ccGlowCrn=Instance_new("UICorner"); ccGlowCrn.Parent=ccGlow; ccGlowCrn.CornerRadius=UDim_new(1,0)
         local ccTitle=Instance_new("TextLabel"); ccTitle.Parent=credCard
         ccTitle.Size=UDim2_new(1,0,0,28); ccTitle.Position=UDim2_new(0,0,0,4)
         ccTitle.BackgroundTransparency=1; ccTitle.TextColor3=Color3_new(1,1,1)
@@ -3687,10 +3709,9 @@ local function buildUI()
         local serverRow=Instance_new("Frame"); serverRow.Parent=homePage
         serverRow.Size=UDim2_new(1,0,0,52); serverRow.BackgroundTransparency=1; serverRow.BorderSizePixel=0
         UI.A(homePage,serverRow)
-        local _,pingValLbl=_makeStatCard(serverRow,"ping_card","--ms",Color3_fromRGB(80,160,255),1,4)
-        local _,fpsValLbl=_makeStatCard(serverRow,"fps_lbl","--",Color3_fromRGB(100,255,100),2,4)
-        local _,uptimeLbl=_makeStatCard(serverRow,"uptime","00:00",Color3_fromRGB(180,140,255),3,4)
-        local _,teamValLbl=_makeStatCard(serverRow,"team_lbl","--",Color3_fromRGB(255,210,90),4,4)
+        local _,pingValLbl=_makeStatCard(serverRow,"ping_card","--ms",Color3_fromRGB(80,160,255),1,3)
+        local _,fpsValLbl=_makeStatCard(serverRow,"fps_lbl","--",Color3_fromRGB(100,255,100),2,3)
+        local _,uptimeLbl=_makeStatCard(serverRow,"uptime","00:00",Color3_fromRGB(180,140,255),3,3)
         local serverHRow=Instance_new("Frame"); serverHRow.Parent=homePage
         serverHRow.Size=UDim2_new(1,0,0,56); serverHRow.BackgroundTransparency=1; serverHRow.BorderSizePixel=0
         UI.A(homePage,serverHRow)
@@ -3828,11 +3849,6 @@ local function buildUI()
                 local m = _mfloor(elapsed / 60)
                 local s = elapsed % 60
                 if uptimeLbl and uptimeLbl.Parent then uptimeLbl.Text = string.format("%02d:%02d", m, s) end
-                if teamValLbl and teamValLbl.Parent then
-                    local ttp = F.getMyTeamType()
-                    teamValLbl.Text = ttp:upper()
-                    teamValLbl.TextColor3 = ttp=="killer" and UI.C.DANGER or ttp=="survivor" and UI.C.GOOD or Color3_fromRGB(255,210,90)
-                end
                 if farmSuccessLbl and farmSuccessLbl.Parent then
                     farmSuccessLbl.Text = _tostr(_Analytics.farmSuccess)
                     farmFailLbl.Text = _tostr(_Analytics.farmFail)
@@ -4156,11 +4172,11 @@ local function buildUI()
             UI.registerTheme(enBtn,"OFF","BackgroundColor3")
             local enCrn=Instance_new("UICorner"); enCrn.Parent=enBtn; enCrn.CornerRadius=UDim_new(0,6)
             local enImg=Instance_new("ImageLabel"); enImg.Parent=enBtn
-            enImg.Size=UDim2_new(0,20,0,14); enImg.Position=UDim2_new(0.5,-10,0,6)
+            enImg.Size=UDim2_new(0,38,0,24); enImg.Position=UDim2_new(0.5,-19,0,4)
             enImg.BackgroundTransparency=1; enImg.ScaleType=Enum.ScaleType.Fit
             setPrivateImage(enImg,"English.jpg")
             local enTxt=Instance_new("TextLabel"); enTxt.Parent=enBtn
-            enTxt.Size=UDim2_new(1,0,0,14); enTxt.Position=UDim2_new(0,0,0,22)
+            enTxt.Size=UDim2_new(1,0,0,11); enTxt.Position=UDim2_new(0,0,0,29)
             enTxt.BackgroundTransparency=1; enTxt.Text="English"
             enTxt.TextColor3=Color3_new(1,1,1); enTxt.Font=Enum.Font.GothamBold; enTxt.TextSize=9
             enTxt.TextXAlignment=Enum.TextXAlignment.Center
@@ -4177,11 +4193,11 @@ local function buildUI()
             UI.registerTheme(ruBtn,"OFF","BackgroundColor3")
             local ruCrn=Instance_new("UICorner"); ruCrn.Parent=ruBtn; ruCrn.CornerRadius=UDim_new(0,6)
             local ruImg=Instance_new("ImageLabel"); ruImg.Parent=ruBtn
-            ruImg.Size=UDim2_new(0,20,0,14); ruImg.Position=UDim2_new(0.5,-10,0,6)
+            ruImg.Size=UDim2_new(0,38,0,24); ruImg.Position=UDim2_new(0.5,-19,0,4)
             ruImg.BackgroundTransparency=1; ruImg.ScaleType=Enum.ScaleType.Fit
             setPrivateImage(ruImg,"Russian.jpg")
             local ruTxt=Instance_new("TextLabel"); ruTxt.Parent=ruBtn
-            ruTxt.Size=UDim2_new(1,0,0,14); ruTxt.Position=UDim2_new(0,0,0,22)
+            ruTxt.Size=UDim2_new(1,0,0,11); ruTxt.Position=UDim2_new(0,0,0,29)
             ruTxt.BackgroundTransparency=1; ruTxt.Text="Russian"
             ruTxt.TextColor3=Color3_new(1,1,1); ruTxt.Font=Enum.Font.GothamBold; ruTxt.TextSize=9
             ruTxt.TextXAlignment=Enum.TextXAlignment.Center
@@ -4198,11 +4214,11 @@ local function buildUI()
             UI.registerTheme(arBtn,"OFF","BackgroundColor3")
             local arCrn=Instance_new("UICorner"); arCrn.Parent=arBtn; arCrn.CornerRadius=UDim_new(0,6)
             local arImg=Instance_new("ImageLabel"); arImg.Parent=arBtn
-            arImg.Size=UDim2_new(0,20,0,14); arImg.Position=UDim2_new(0.5,-10,0,6)
+            arImg.Size=UDim2_new(0,38,0,24); arImg.Position=UDim2_new(0.5,-19,0,4)
             arImg.BackgroundTransparency=1; arImg.ScaleType=Enum.ScaleType.Fit
             setPrivateImage(arImg,"Arabic.jpg")
             local arTxt=Instance_new("TextLabel"); arTxt.Parent=arBtn
-            arTxt.Size=UDim2_new(1,0,0,14); arTxt.Position=UDim2_new(0,0,0,22)
+            arTxt.Size=UDim2_new(1,0,0,11); arTxt.Position=UDim2_new(0,0,0,29)
             arTxt.BackgroundTransparency=1; arTxt.Text="Arabic"
             arTxt.TextColor3=Color3_new(1,1,1); arTxt.Font=Enum.Font.GothamBold; arTxt.TextSize=9
             arTxt.TextXAlignment=Enum.TextXAlignment.Center
@@ -4555,10 +4571,10 @@ local function buildUI()
 
 local function showChangelog(parentGui)
         if not St.Settings.ShowAds then return end
-        local isRU=St.Language=="RU"
-        local titleTxt=isRU and "✨ Что нового в V6.1 ✨" or "✨ What's New in V6.1 ✨"
+        local _lng=St.Language
+        local titleTxt=({EN="✨ What's New in V6.1 ✨",RU="✨ Что нового в V6.1 ✨",AR="✨ الجديد في V6.1 ✨"})[_lng] or "✨ What's New in V6.1 ✨"
 
-        local rawText = isRU and UPDATE_TEXT_RU or UPDATE_TEXT_EN
+        local rawText = ({EN=UPDATE_TEXT_EN,RU=UPDATE_TEXT_RU,AR=UPDATE_TEXT_AR})[_lng] or UPDATE_TEXT_EN
         local items = {}
         for line in rawText:gmatch("[^\r\n]+") do
             table.insert(items, line)
@@ -4652,7 +4668,7 @@ local function showChangelog(parentGui)
         
         copyBtn.MouseButton1Click:Connect(function()
             pcall(function() setclipboard("https://t.me/JohnyX_STK") end)
-            UI.showToast(isRU and "  Ссылка скопирована!" or "  Link copied!",parentGui)
+            UI.showToast(({EN="  Link copied!",RU="  Ссылка скопирована!",AR="  تم نسخ الرابط!"})[_lng] or "  Link copied!",parentGui)
         end)
 
         local ts=Sv.TweenService
@@ -4749,27 +4765,8 @@ local function init()
         if St.Settings.ShiftLock then F.startShiftLock() end
         if F.getMyTeamType()~="lobby" then task.wait(0.5); F.restartEnabledCommands() end
     end)
-    local function updateTeamBadge(teamType)
-        if St.UIRefs.teamBadge and St.UIRefs.teamBadge.Parent then
-            if teamType=="survivor" then
-                St.UIRefs.teamBadge.Text="SURVIVOR"
-                St.UIRefs.teamBadge.TextColor3=Color3_fromRGB(255,255,255)
-                Sv.TweenService:Create(St.UIRefs.teamBadge,TweenInfo.new(0.2),{BackgroundColor3=Color3_fromRGB(30,140,60)}):Play()
-            elseif teamType=="killer" then
-                St.UIRefs.teamBadge.Text="KILLER"
-                St.UIRefs.teamBadge.TextColor3=Color3_fromRGB(255,255,255)
-                Sv.TweenService:Create(St.UIRefs.teamBadge,TweenInfo.new(0.2),{BackgroundColor3=Color3_fromRGB(139,0,0)}):Play()
-            else
-                St.UIRefs.teamBadge.Text="LOBBY"
-                St.UIRefs.teamBadge.TextColor3=Color3_fromRGB(190,195,210)
-                Sv.TweenService:Create(St.UIRefs.teamBadge,TweenInfo.new(0.2),{BackgroundColor3=Color3_fromRGB(40,40,45)}):Play()
-            end
-        end
-    end
-    updateTeamBadge(F.getMyTeamType())
     Sv.LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
         local teamType=F.getMyTeamType()
-        updateTeamBadge(teamType)
         if teamType=="lobby" then
             F.stopAllActionsInternal()
             _stopVoidSafetyBG()
