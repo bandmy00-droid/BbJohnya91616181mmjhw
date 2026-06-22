@@ -1,4 +1,4 @@
-local UPDATE_VERSION = "V6.1"
+local UPDATE_VERSION = "V6.2"
 local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm, Kill All & UI bugs fixed \n2. ✨ <b>New:</b> Arabic language, new animations & OLED black theme \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
 local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> ESP лута/Автофарм, Kill All и ошибки интерфейса \n2. ✨ <b>Новое:</b> Арабский язык, новые анимации и чёрная OLED-тема \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
 local UPDATE_TEXT_AR = "1. 🛠️ <b>تم الإصلاح:</b> كشف اللوت/الفارم، Kill All ومشاكل الواجهة \n2. ✨ <b>جديد:</b> اللغة العربية، انميشنات جديدة، وثيم أسود OLED \n3. 🐛 <b>إصلاح أخطاء</b> \n4. 🎨 <b>تحسين الثيم</b> \n5. 🌫️ <b>تحسين إزالة الضباب</b> \n6. 🚀 <b>تحسينات أخرى</b> "
@@ -99,7 +99,7 @@ local St={
     _lockerCache={models={},time=0},
     _pristineAnimate=nil,
     _snowHrConn=nil,
-    SAVE_FILE="JxH_settingsV6.1.json",
+    SAVE_FILE="JxH_settingsV6.2.json",
     _lastSaveTime=0,
     _sliderDrags={},
     _sliderDragId=nil,
@@ -2153,7 +2153,7 @@ function F.saveSettings()
             no=St.NameSettings.OffsetY,do_=St.DistSettings.OffsetY,
             ls={oy=St.LivesSettings.OffsetY,ox=St.LivesSettings.OffsetX,hs=St.LivesSettings.HeartSize},
             ws=St.Fl.winSize,hs2=St.Fl.hudSize,bgt=St.Fl.bgTransparency,
-            th=St.Settings.ThemeHue
+            th=St.Settings.ThemeHue,lang=St.Language
         }
         for k,v in pairs(St.Settings) do data.s[k]=v end
         if St.MainBtn_ref and St.MainBtn_ref.Parent then
@@ -2205,6 +2205,7 @@ function F.loadSettings()
         if data.hs2 then St.Fl.hudSize=data.hs2 end
         if data.bgt then St.Fl.bgTransparency=data.bgt end
         if data.th then St.Settings.ThemeHue=data.th end
+        if data.lang=="EN" or data.lang=="RU" or data.lang=="AR" then St.Language=data.lang end
         if data.bx and data.by then St._savedBtnPos=Vector2.new(data.bx,data.by) end
     end)
 end
@@ -2755,7 +2756,7 @@ local _LANG={
         home_tab="Main", esp_tab="Visuals", farm_tab="Auto farm", sett_tab="Options",
         player_info="PLAYER INFO",
         credits="JohnyX Script",
-        credits_sub="by @G_p0z  •  v6.1",
+        credits_sub="by @G_p0z  •  v6.2",
         motto="We are not the only ones, but we are the best",
         fps_lbl="FPS", ping_lbl="Ping",
         status_ok="Status: Undetected",
@@ -2780,7 +2781,7 @@ local _LANG={
         uptime="Uptime", ping_card="Ping",
         farm_success="Collected", farm_fail="Errors",
         farm_escapes="Escapes", farm_coins="Coins",
-        toast_started="Script Loaded  v6.1",
+        toast_started="Script Loaded  v6.2",
         toast_farm_on="Auto Farm: ON",
         toast_farm_off="Auto Farm: OFF",
         toast_rejoin="Rejoining...",
@@ -2819,7 +2820,7 @@ local _LANG={
         home_tab="Главная", esp_tab="Визуал", farm_tab="Автофарм", sett_tab="Опции",
         player_info="ИГРОК",
         credits="JohnyX Script",
-        credits_sub="от @G_p0z  •  v6.1",
+        credits_sub="от @G_p0z  •  v6.2",
         motto="Мы не единственные, но мы лучшие",
         fps_lbl="FPS", ping_lbl="Пинг",
         status_ok="Статус: Не обнаружен",
@@ -2844,7 +2845,7 @@ local _LANG={
         uptime="Время работы", ping_card="Пинг",
         farm_success="Собрано", farm_fail="Ошибки",
         farm_escapes="Побеги", farm_coins="Монеты",
-        toast_started="Скрипт загружен  v6.1",
+        toast_started="Скрипт загружен  v6.2",
         toast_farm_on="Автофарм: ВКЛ",
         toast_farm_off="Автофарм: ВЫКЛ",
         toast_rejoin="Переподключение...",
@@ -2883,7 +2884,7 @@ local _LANG={
         home_tab="الرئيسية", esp_tab="المظهر", farm_tab="الفارم التلقائي", sett_tab="الإعدادات",
         player_info="معلومات اللاعب",
         credits="JohnyX Script",
-        credits_sub="بواسطة @G_p0z  •  v6.1",
+        credits_sub="بواسطة @G_p0z  •  v6.2",
         motto="لسنا الوحيدين، لكننا الأفضل",
         fps_lbl="FPS", ping_lbl="بينج",
         status_ok="الحالة: غير مكتشف",
@@ -2908,7 +2909,7 @@ local _LANG={
         uptime="مدة التشغيل", ping_card="بينج",
         farm_success="تم الجمع", farm_fail="الأخطاء",
         farm_escapes="مرات الهروب", farm_coins="العملات",
-        toast_started="تم تحميل السكربت  v6.1",
+        toast_started="تم تحميل السكربت  v6.2",
         toast_farm_on="الفارم التلقائي: تشغيل",
         toast_farm_off="الفارم التلقائي: إيقاف",
         toast_rejoin="إعادة الانضمام...",
@@ -4572,7 +4573,7 @@ local function buildUI()
 local function showChangelog(parentGui)
         if not St.Settings.ShowAds then return end
         local _lng=St.Language
-        local titleTxt=({EN="✨ What's New in V6.1 ✨",RU="✨ Что нового в V6.1 ✨",AR="✨ الجديد في V6.1 ✨"})[_lng] or "✨ What's New in V6.1 ✨"
+        local titleTxt=({EN="✨ What's New in V6.2 ✨",RU="✨ Что нового в V6.2 ✨",AR="✨ الجديد في V6.2 ✨"})[_lng] or "✨ What's New in V6.2 ✨"
 
         local rawText = ({EN=UPDATE_TEXT_EN,RU=UPDATE_TEXT_RU,AR=UPDATE_TEXT_AR})[_lng] or UPDATE_TEXT_EN
         local items = {}
