@@ -161,49 +161,144 @@ local function firePrompt(prompt)
     end)
 end
 
+local function unstuckNudge(hum,root)
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+    local look=root.CFrame.LookVector
+    local side=Vector3.new(-look.Z,0,look.X)
+    if math.random(1,2)==1 then side=-side end
+    pcall(function() hum:Move(side,false) end)
+    task.wait(0.3)
+    pcall(function() hum:Move(Vector3.new(0,0,0),false) end)
+end
+
+local function directMoveStep(hum,root,targetPos,maxTime)
+    hum:MoveTo(targetPos)
+    local reached=false
+    local conn=hum.MoveToFinished:Connect(function(r) reached=r end)
+    local start=tick()
+    local lastPos=root.Position
+    local stillTime=0
+    local stuck=false
+    while not reached and tick()-start<maxTime do
+        if not running then conn:Disconnect(); return false,false end
+        task.wait(0.15)
+        if not root.Parent then conn:Disconnect(); return false,false end
+        local moved=(root.Position-lastPos).Magnitude
+        if moved<0.4 then
+            stillTime=stillTime+0.15
+        else
+            stillTime=0
+        end
+        lastPos=root.Position
+        if stillTime>0.7 then
+            stuck=true
+            break
+        end
+    end
+    conn:Disconnect()
+    return reached,stuck
+end
+
+local function computePath(fromPos,toPos)
+    local path=PathfindingService:CreatePath({
+        AgentRadius=2.4,AgentHeight=5,AgentCanJump=true,AgentCanClimb=true,WaypointSpacing=2.5
+    })
+    local ok=pcall(function() path:ComputeAsync(fromPos,toPos) end)
+    if ok and path.Status==Enum.PathStatus.Success then
+        return path:GetWaypoints()
+    end
+    return nil
+end
+
 local function walkTo(targetPos,timeout)
     local char=LocalPlayer.Character
     if not char then return false end
     local hum=char:FindFirstChildOfClass("Humanoid")
     local root=char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
-    local path=PathfindingService:CreatePath({
-        AgentRadius=2,AgentHeight=5,AgentCanJump=true,AgentCanClimb=true,WaypointSpacing=4
-    })
-    local ok=pcall(function() path:ComputeAsync(root.Position,targetPos) end)
-    local waypoints=nil
-    if ok and path.Status==Enum.PathStatus.Success then
-        waypoints=path:GetWaypoints()
-    end
-    if not waypoints then
-        hum:MoveTo(targetPos)
-        local reached=false
-        local conn=hum.MoveToFinished:Connect(function(r) reached=r end)
-        local start=tick()
-        while not reached and tick()-start<(timeout or 8) do
-            if not running then conn:Disconnect(); return false end
-            task.wait(0.1)
+    local tries=0
+    while tries<2 do
+        tries=tries+1
+        local waypoints=computePath(root.Position,targetPos)
+        if not waypoints then
+            local reached,stuck=directMoveStep(hum,root,targetPos,timeout or 8)
+            if reached then return true end
+            if stuck then unstuckNudge(hum,root) end
+            if tries>=2 then return false end
+        else
+            local allReached=true
+            local i=1
+            while i<=#waypoints do
+                if not running or not root.Parent then return false end
+                local wp=waypoints[i]
+                if wp.Action==Enum.PathWaypointAction.Jump then
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                end
+                local reached,stuck=directMoveStep(hum,root,wp.Position,3)
+                if not reached then
+                    if stuck then
+                        unstuckNudge(hum,root)
+                        task.wait(0.15)
+                        local reached2=directMoveStep(hum,root,wp.Position,1.5)
+                        if not reached2 then allReached=false; break end
+                    else
+                        allReached=false; break
+                    end
+                end
+                i=i+1
+            end
+            if allReached then return true end
+            if tries>=2 then return false end
         end
-        conn:Disconnect()
-        return reached
+        task.wait(0.2)
     end
-    for i=1,#waypoints do
-        if not running then return false end
-        local wp=waypoints[i]
-        if wp.Action==Enum.PathWaypointAction.Jump then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-        hum:MoveTo(wp.Position)
-        local reached=false
-        local conn=hum.MoveToFinished:Connect(function(r) reached=r end)
-        local start=tick()
-        while not reached and tick()-start<3 do
-            if not running then conn:Disconnect(); return false end
-            task.wait(0.05)
-        end
-        conn:Disconnect()
+    return false
+end
+
+local function approachAndFire(part,prompt,maxDist)
+    if not part or not prompt then return false end
+    local char=LocalPlayer.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    if (root.Position-part.Position).Magnitude>(maxDist or 8) then
+        walkTo(part.Position,8)
     end
-    return true
+    task.wait(0.15)
+    if root.Parent then
+        local d=(root.Position-part.Position).Magnitude
+        local limit=(prompt.MaxActivationDistance or 10)+2
+        if d<=limit then
+            firePrompt(prompt)
+            return true
+        end
+    end
+    return false
+end
+
+local function pathIsValid(fromPos,toPos)
+    local path=PathfindingService:CreatePath({AgentRadius=2.4,AgentHeight=5,AgentCanJump=true})
+    local ok=pcall(function() path:ComputeAsync(fromPos,toPos) end)
+    return ok and path.Status==Enum.PathStatus.Success
+end
+
+local function pickFleeTarget(root,killerRoot)
+    local away=root.Position-killerRoot.Position
+    if away.Magnitude<0.1 then away=Vector3.new(1,0,0) end
+    away=away.Unit
+    local angles={0,30,-30,60,-60,100,-100,150,-150}
+    for _,ang in ipairs(angles) do
+        local rad=math.rad(ang)
+        local dir=Vector3.new(
+            away.X*math.cos(rad)-away.Z*math.sin(rad),
+            0,
+            away.X*math.sin(rad)+away.Z*math.cos(rad)
+        )
+        local candidate=root.Position+dir*18
+        if pathIsValid(root.Position,candidate) then
+            return candidate
+        end
+    end
+    return root.Position+away*18
 end
 
 local function nearestKiller(root)
@@ -237,14 +332,22 @@ local function hideInLocker(lockerModel)
     if not lockerModel then return end
     local ok,cf=pcall(function() return lockerModel:GetBoundingBox() end)
     if not ok then return end
-    walkTo(cf.Position,6)
+    walkTo(cf.Position,7)
     local prompt=lockerModel:FindFirstChildWhichIsA("ProximityPrompt",true)
-    if prompt then firePrompt(prompt) end
+    if prompt then
+        local char=LocalPlayer.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local d=(root.Position-cf.Position).Magnitude
+            local limit=(prompt.MaxActivationDistance or 10)+2
+            if d<=limit then firePrompt(prompt) end
+        end
+    end
 end
 
 local function lobbyLoop(myId)
     local point=LOBBY_POINTS[math.random(1,#LOBBY_POINTS)]
-    walkTo(point,12)
+    walkTo(point,14)
     local lastJump=tick()
     while running and runId==myId and getTeamType()=="lobby" do
         task.wait(1)
@@ -286,12 +389,9 @@ local function survivorLoop(myId)
                     end
                 end
                 if not handled and killerRoot and killerDist<=DANGER_RADIUS then
-                    local away=root.Position-killerRoot.Position
-                    if away.Magnitude>0.1 then
-                        away=away.Unit
-                        walkTo(root.Position+away*20,4)
-                    end
-                    task.wait(0.2)
+                    local fleeTarget=pickFleeTarget(root,killerRoot)
+                    walkTo(fleeTarget,4)
+                    task.wait(0.1)
                     handled=true
                 end
                 if not handled then
@@ -304,10 +404,7 @@ local function survivorLoop(myId)
                     if closestExit then
                         walkTo(closestExit.Position,10)
                         local prompt=findPrompt(closestExit)
-                        if prompt and root.Parent and (root.Position-closestExit.Position).Magnitude<10 then
-                            firePrompt(prompt)
-                            task.wait(1)
-                        end
+                        if prompt then approachAndFire(closestExit,prompt,10) end
                         handled=true
                     end
                 end
@@ -321,8 +418,8 @@ local function survivorLoop(myId)
                     if closestLoot then
                         walkTo(closestLoot.Position,8)
                         local prompt=findPrompt(closestLoot)
-                        if prompt then firePrompt(prompt) end
-                        task.wait(0.3)
+                        if prompt then approachAndFire(closestLoot,prompt,8) end
+                        task.wait(0.2)
                         handled=true
                     end
                 end
@@ -403,7 +500,7 @@ local function killerLoop(myId)
                     local lm=lockers[math.random(1,#lockers)]
                     local ok,cf=pcall(function() return lm:GetBoundingBox() end)
                     if ok then
-                        walkTo(cf.Position,6)
+                        walkTo(cf.Position,7)
                         local prompt=lm:FindFirstChildWhichIsA("ProximityPrompt",true)
                         if prompt then firePrompt(prompt) end
                     end
