@@ -1,4 +1,3 @@
-
 local UPDATE_VERSION = "V6.2"
 local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm, Kill All & UI bugs fixed \n2. ✨ <b>New:</b> Arabic language, new animations & OLED black theme \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
 local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> ESP лута/Автофарм, Kill All и ошибки интерфейса \n2. ✨ <b>Новое:</b> Арабский язык, новые анимации и чёрная OLED-тема \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
@@ -4671,7 +4670,7 @@ local function buildUI()
         end)
         MainBtn.MouseButton1Click:Connect(function()
             if not hasDragged then
-                if MainFrame.Visible then closeMenu() end else openMenu() end
+                if MainFrame.Visible then closeMenu() else openMenu() end
             end
         end)
     end
