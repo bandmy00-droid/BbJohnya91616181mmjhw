@@ -1,3 +1,179 @@
+local DebugScreenGui = Instance.new("ScreenGui")
+DebugScreenGui.Name = "LiveDebugGui"
+DebugScreenGui.DisplayOrder = 99999
+DebugScreenGui.ResetOnSpawn = false
+pcall(function() DebugScreenGui.Parent = game:GetService("CoreGui") end)
+if not DebugScreenGui.Parent then
+    pcall(function() DebugScreenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end)
+end
+
+local DebugMain = Instance.new("Frame")
+DebugMain.Size = UDim2.new(0, 400, 0, 300)
+DebugMain.Position = UDim2.new(0, 20, 0.5, -150)
+DebugMain.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+DebugMain.BorderSizePixel = 0
+DebugMain.Active = true
+DebugMain.Draggable = true
+DebugMain.Parent = DebugScreenGui
+
+local DebugCorner = Instance.new("UICorner")
+DebugCorner.CornerRadius = UDim.new(0, 8)
+DebugCorner.Parent = DebugMain
+
+local DebugTitle = Instance.new("TextLabel")
+DebugTitle.Size = UDim2.new(1, 0, 0, 30)
+DebugTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+DebugTitle.BorderSizePixel = 0
+DebugTitle.Text = "Live Debug Console"
+DebugTitle.TextColor3 = Color3.new(1, 1, 1)
+DebugTitle.Font = Enum.Font.GothamBold
+DebugTitle.TextSize = 14
+DebugTitle.Parent = DebugMain
+
+local DebugTitleCorner = Instance.new("UICorner")
+DebugTitleCorner.CornerRadius = UDim.new(0, 8)
+DebugTitleCorner.Parent = DebugTitle
+
+local DebugScroll = Instance.new("ScrollingFrame")
+DebugScroll.Size = UDim2.new(1, -10, 1, -70)
+DebugScroll.Position = UDim2.new(0, 5, 0, 35)
+DebugScroll.BackgroundTransparency = 1
+DebugScroll.BorderSizePixel = 0
+DebugScroll.ScrollBarThickness = 4
+DebugScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+DebugScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+DebugScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+DebugScroll.Parent = DebugMain
+
+local DebugLogText = Instance.new("TextLabel")
+DebugLogText.Size = UDim2.new(1, -10, 0, 0)
+DebugLogText.Position = UDim2.new(0, 5, 0, 0)
+DebugLogText.BackgroundTransparency = 1
+DebugLogText.Text = ""
+DebugLogText.TextColor3 = Color3.new(1, 1, 1)
+DebugLogText.Font = Enum.Font.Code
+DebugLogText.TextSize = 12
+DebugLogText.TextXAlignment = Enum.TextXAlignment.Left
+DebugLogText.TextYAlignment = Enum.TextYAlignment.Top
+DebugLogText.TextWrapped = true
+DebugLogText.RichText = false
+DebugLogText.Parent = DebugScroll
+
+local DebugBtnContainer = Instance.new("Frame")
+DebugBtnContainer.Size = UDim2.new(1, 0, 0, 30)
+DebugBtnContainer.Position = UDim2.new(0, 0, 1, -30)
+DebugBtnContainer.BackgroundTransparency = 1
+DebugBtnContainer.Parent = DebugMain
+
+local CopyBtn = Instance.new("TextButton")
+CopyBtn.Size = UDim2.new(0.4, -5, 1, -6)
+CopyBtn.Position = UDim2.new(0.05, 0, 0, 3)
+CopyBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
+CopyBtn.Text = "Copy Logs"
+CopyBtn.TextColor3 = Color3.new(1, 1, 1)
+CopyBtn.Font = Enum.Font.GothamBold
+CopyBtn.TextSize = 12
+CopyBtn.BorderSizePixel = 0
+CopyBtn.Parent = DebugBtnContainer
+
+local CopyBtnCorner = Instance.new("UICorner")
+CopyBtnCorner.CornerRadius = UDim.new(0, 6)
+CopyBtnCorner.Parent = CopyBtn
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0.4, -5, 1, -6)
+CloseBtn.Position = UDim2.new(0.55, 0, 0, 3)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "Close"
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 12
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = DebugBtnContainer
+
+local CloseBtnCorner = Instance.new("UICorner")
+CloseBtnCorner.CornerRadius = UDim.new(0, 6)
+CloseBtnCorner.Parent = CloseBtn
+
+CopyBtn.MouseButton1Click:Connect(function()
+    if setclipboard then
+        pcall(setclipboard, DebugLogText.Text)
+    elseif toclipboard then
+        pcall(toclipboard, DebugLogText.Text)
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    DebugScreenGui:Destroy()
+end)
+
+local function AddDebugLog(msg)
+    if not DebugLogText or not DebugLogText.Parent then return end
+    local timeStr = os.date("%H:%M:%S")
+    local line = string.format("[%s] %s\n", timeStr, tostring(msg))
+    DebugLogText.Text = DebugLogText.Text .. line
+end
+
+AddDebugLog("Live Debugging Initialized.")
+
+local oldPrint = print
+local oldWarn = warn
+
+print = function(...)
+    local args = {...}
+    local msg = ""
+    for i, v in ipairs(args) do
+        msg = msg .. tostring(v) .. (i < #args and "\t" or "")
+    end
+    oldPrint(...)
+    AddDebugLog(msg)
+end
+
+warn = function(...)
+    local args = {...}
+    local msg = ""
+    for i, v in ipairs(args) do
+        msg = msg .. tostring(v) .. (i < #args and "\t" or "")
+    end
+    oldWarn(...)
+    AddDebugLog("[WARN] " .. msg)
+end
+
+local LogService = game:GetService("LogService")
+if LogService then
+    pcall(function()
+        LogService.MessageOut:Connect(function(msg, typ)
+            AddDebugLog(msg)
+        end)
+    end)
+end
+
+local oldTaskSpawn = task.spawn
+task.spawn = function(...)
+    local args = {...}
+    local func = args[1]
+    if type(func) == "function" then
+        local originalFunc = func
+        args[1] = function(...)
+            local ok, err = xpcall(originalFunc, function(e) return tostring(e) .. "\n" .. debug.traceback() end, ...)
+            if not ok then
+                AddDebugLog("THREAD CRASH: " .. err)
+            end
+        end
+    end
+    return oldTaskSpawn(unpack(args))
+end
+
+local oldCoroutineWrap = coroutine.wrap
+coroutine.wrap = function(func)
+    return oldCoroutineWrap(function(...)
+        local ok, err = xpcall(func, function(e) return tostring(e) .. "\n" .. debug.traceback() end, ...)
+        if not ok then
+            AddDebugLog("COROUTINE CRASH: " .. err)
+        end
+    end)
+end
+
 local UPDATE_VERSION = "V6.2"
 local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm, Kill All & UI bugs fixed \n2. ✨ <b>New:</b> Arabic language, new animations & OLED black theme \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
 local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> ESP лута/Автофарм, Kill All и ошибки интерфейса \n2. ✨ <b>Новое:</b> Арабский язык, новые анимации и чёрная OLED-тема \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
@@ -5015,64 +5191,11 @@ local function init()
         end
     end)
 end
--- ==========================================
--- 🚨 نظام صيد الأخطاء (Crash Logger)
--- ==========================================
-local function _ShowCrashLog(errMessage)
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "JxH_CrashLog"
-    sg.DisplayOrder = 9999
-    
-    -- محاولة وضع الواجهة في مكان آمن
-    pcall(function() sg.Parent = game:GetService("CoreGui") end)
-    if not sg.Parent then 
-        pcall(function() sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end) 
-    end
-    
-    local sf = Instance.new("ScrollingFrame")
-    sf.Parent = sg
-    sf.Size = UDim2.new(0.9, 0, 0.6, 0)
-    sf.Position = UDim2.new(0.05, 0, 0.2, 0)
-    sf.BackgroundColor3 = Color3.fromRGB(20, 5, 5)
-    sf.BorderSizePixel = 2
-    sf.BorderColor3 = Color3.fromRGB(255, 50, 50)
-    sf.CanvasSize = UDim2.new(0, 0, 3, 0)
-    sf.ScrollBarThickness = 6
-    
-    local txt = Instance.new("TextLabel")
-    txt.Parent = sf
-    txt.Size = UDim2.new(1, -10, 1, -10)
-    txt.Position = UDim2.new(0, 5, 0, 5)
-    txt.BackgroundTransparency = 1
-    txt.TextColor3 = Color3.fromRGB(255, 120, 120)
-    txt.TextWrapped = true
-    txt.Font = Enum.Font.Code
-    txt.TextSize = 12
-    txt.TextXAlignment = Enum.TextXAlignment.Left
-    txt.TextYAlignment = Enum.TextYAlignment.Top
-    txt.Text = "⚠️ JohnyX Script Crash Report ⚠️\n\n" .. tostring(errMessage)
-
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Parent = sg
-    closeBtn.Size = UDim2.new(0.9, 0, 0, 35)
-    closeBtn.Position = UDim2.new(0.05, 0, 0.82, 0)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    closeBtn.Text = "إغلاق التقرير (Close)"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 14
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        sg:Destroy()
-    end)
-end
-
--- تغليف نقطة التشغيل الرئيسية
-local success, err = xpcall(init, function(msg)
-    return tostring(msg) .. "\n\nTraceback:\n" .. debug.traceback()
+local mainSuccess, mainErr = xpcall(function()
+    init()
+end, function(e)
+    return tostring(e) .. "\n" .. debug.traceback()
 end)
-
--- إذا انهار السكربت، اعرض واجهة الخطأ
-if not success then
-    _ShowCrashLog(err)
+if not mainSuccess then
+    AddDebugLog("FATAL Main Thread CRASH: " .. mainErr)
 end
