@@ -41,13 +41,13 @@ local St={
         PlayerESP=false,ExitESP=false,LootESP=false,
         ShowDistance=false,ShowNames=false,ShowCoins=false,
         LivesESP=false,
-        DoubleJump=true,InfiniteJump=false,Noclip=false,SpeedEnabled=false,JumpBoost=false,
+        DoubleJump=true,InfiniteJump=false,Noclip=false,SpeedEnabled=false,
         FlyEnabled=false,GhostMode=false,Hitbox=false,
         AutoFarmLoot=false,KillerSafety=false,AutoEscape=false,
         RemoveFog=false,AntiAFK=false,_killAll=false,
         AutoRevive=false,AutoSelfRevive=false,
         SnowAnimation=false,RoyalAnimation=false,NinjaAnimation=false,AntiVoid=false,
-        ThemeHue=0.58,FpsBoost=false,ShowAds=true,ShiftLock=false,
+        ThemeHue=0.58,FpsBoost=false,ShowAds=true,ShiftLock=false,JumpBoost=false,
     },
     NameSettings={OffsetY=4.5,Font=Enum.Font.GothamBold},
     DistSettings={OffsetY=-4.5,Font=Enum.Font.GothamBold},
@@ -73,7 +73,7 @@ local St={
         killAllRunning=false,fogLoopRunning=false,autoReviveRunning=false,
         reviveSelfPaused=false,farmPaused=false,farmStoppedForRound=false,
         escapeTriggeredExternal=false,escapeCheckTimer=0,farmPriority=0,
-        killerSafetyDist=50,currentSpeed=16,flySpeed=50,hitboxRadius=15,jumpBoostPower=50,
+        killerSafetyDist=50,currentSpeed=16,flySpeed=50,hitboxRadius=15,jumpPower=60,
         lastFarmPos=nil,lastFarmPosTime=0,uiScale=1.0,winSize=1.0,hudSize=1.0,bgTransparency=0.5,
         lootCacheMap=nil,currentMapInstance=nil,originalMasterVolume=Sv.SoundService.AmbientReverb,
         currentTab="home",
@@ -147,6 +147,7 @@ function F.setToggleState(sName,state)
         St.Settings[sName]=state
         if St.toggleRefs[sName] then St.toggleRefs[sName](state) end
         if St.toggleCbs[sName] then St.toggleCbs[sName](state) end
+        if St.UIRefs and St.UIRefs._updateStatusBar then St.UIRefs._updateStatusBar() end
     end
 end
 local _ROBLOX_ICONS={
@@ -1036,6 +1037,33 @@ function F.startInfiniteJump()
             pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
         end
     end)
+end
+function F.startJumpBoost()
+    St.Settings.JumpBoost=true
+    if St.Cn.jumpBoost then St.Cn.jumpBoost:Disconnect() end
+    St.Cn.jumpBoost=Sv.RunService.Heartbeat:Connect(function()
+        if not St.Settings.JumpBoost then return end
+        local char=Sv.LocalPlayer.Character
+        local hum=char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health>0 then
+            if not hum.UseJumpPower then
+                hum.UseJumpPower=true
+            end
+            if hum.JumpPower~=St.Fl.jumpPower then
+                hum.JumpPower=St.Fl.jumpPower
+            end
+        end
+    end)
+end
+function F.stopJumpBoost()
+    St.Settings.JumpBoost=false
+    if St.Cn.jumpBoost then St.Cn.jumpBoost:Disconnect(); St.Cn.jumpBoost=nil end
+    local char=Sv.LocalPlayer.Character
+    local hum=char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower=false
+        hum.JumpPower=50
+    end
 end
 local _voidSafetyCn=nil
 local function _stopVoidSafetyBG()
@@ -2062,11 +2090,13 @@ function F.stopCustomAnim(char,keepSetting)
     if not char then return end
     local live=char:FindFirstChild("Animate")
     if live and live:GetAttribute("JxH_Custom") then
-        if F.getMyTeamType()=="killer" then
-            live:Destroy()
-        elseif St._pristineAnimateChar==char and St._pristineAnimate then
+        if St._pristineAnimateChar==char and St._pristineAnimate then
             local restored=St._pristineAnimate:Clone()
-            live:Destroy(); restored.Disabled=false; restored.Parent=char
+            live:Destroy()
+            restored.Disabled=false
+            restored.Parent=char
+        else
+            live:Destroy()
         end
     end
 end
@@ -2151,8 +2181,8 @@ function F.saveSettings()
     St._lastSaveTime=now
     pcall(function()
         local data={
-            s={},sp=St.Fl.currentSpeed,jbp=St.Fl.jumpBoostPower,flsp=St.Fl.flySpeed,
-            fsp=St.farmSpeedPct,
+            s={},sp=St.Fl.currentSpeed,flsp=St.Fl.flySpeed,
+            fsp=St.farmSpeedPct,jp=St.Fl.jumpPower,
             kd=St.Fl.killerSafetyDist,lv=St.MIN_LOOT_VALUE,hr=St.Fl.hitboxRadius,
             no=St.NameSettings.OffsetY,do_=St.DistSettings.OffsetY,
             ls={oy=St.LivesSettings.OffsetY,ox=St.LivesSettings.OffsetX,hs=St.LivesSettings.HeartSize},
@@ -2185,8 +2215,8 @@ function F.loadSettings()
             end
         end
         if data.sp then St.Fl.currentSpeed=data.sp end
-        if data.jbp then St.Fl.jumpBoostPower=data.jbp end
         if data.flsp then St.Fl.flySpeed=data.flsp end
+        if data.jp then St.Fl.jumpPower=data.jp end
         if data.fsp then
             St.farmSpeedPct=math.clamp(data.fsp,0,180)
             local function _pctToDelay(pct)
@@ -2312,28 +2342,6 @@ function F.stopShiftLock()
         end
     end)
 end
-function F.stopJumpBoost()
-    St.Settings.JumpBoost=false
-    if St.Cn.jumpBoost then St.Cn.jumpBoost:Disconnect(); St.Cn.jumpBoost=nil end
-    local char=Sv.LocalPlayer.Character
-    local hum=char and char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.UseJumpPower=true; hum.JumpPower=50 end
-end
-
-function F.startJumpBoost()
-    F.stopJumpBoost()
-    St.Settings.JumpBoost=true
-    St.Cn.jumpBoost=Sv.RunService.Heartbeat:Connect(function()
-        if not St.Settings.JumpBoost then F.stopJumpBoost(); return end
-        local char=Sv.LocalPlayer.Character
-        local hum=char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            if not hum.UseJumpPower then hum.UseJumpPower=true end
-            if hum.JumpPower~=St.Fl.jumpBoostPower then hum.JumpPower=St.Fl.jumpBoostPower end
-        end
-    end)
-end
-
 function F.restartEnabledCommands()
     local now=tick()
     if now-St._restartCooldown<1.5 then return end
@@ -2358,6 +2366,7 @@ function F.restartEnabledCommands()
     if St.Settings.AntiAFK then F.startAntiAFK() end
     if St.Settings.LootESP then F.updateLootESP() end
     if St.Settings.ExitESP then F.updateExitESP() end
+    if St.Settings.JumpBoost then F.startJumpBoost() end
     do local _aw=F.getActiveAnim(); if _aw then F.applyCustomAnim(Sv.LocalPlayer.Character,_aw) end end
     if St.Settings.GhostMode and tt~="lobby" then F.toggleGhostMode(true) end
 end
@@ -2397,6 +2406,7 @@ function F.applyTheme(hue)
         if setVisual then setVisual(St.Settings[sName] or false) end
     end
     if St.UIRefs._updateTabs then St.UIRefs._updateTabs() end
+    if St.UIRefs._updateStatusBar then St.UIRefs._updateStatusBar() end
     task.defer(F.saveSettings)
 end
 function UI.registerTheme(inst,typeKey,propKey)
@@ -2501,35 +2511,6 @@ function UI.makeGridContainer(parent)
     end)
     return fr
 end
-function UI.updateActiveCommands()
-    if not St.UIRefs.activeLbl or not St.UIRefs.activeLbl.Parent then return end
-    local list={}
-    if St.Settings.SpeedEnabled then table.insert(list, "Speed["..tostring(St.Fl.currentSpeed).."]") end
-    if St.Settings.JumpBoost then table.insert(list, "Jump["..tostring(St.Fl.jumpBoostPower).."]") end
-    if St.Settings.FlyEnabled then table.insert(list, "Fly") end
-    if St.Settings.Noclip then table.insert(list, "Noclip") end
-    if St.Settings.GhostMode then table.insert(list, "Ghost") end
-    if St.Settings.PlayerESP then table.insert(list, "Player ESP") end
-    if St.Settings.LootESP then table.insert(list, "Loot ESP") end
-    if St.Settings.ExitESP then table.insert(list, "Exit ESP") end
-    if St.Settings.AutoFarmLoot then table.insert(list, "Auto Farm") end
-    if St.Settings.KillerSafety then table.insert(list, "Killer Safety") end
-    if St.Settings.AutoEscape then table.insert(list, "Auto Escape") end
-    if St.Settings._killAll then table.insert(list, "Kill All") end
-    if St.Settings.Hitbox then table.insert(list, "Hitbox") end
-    if St.Settings.InfiniteJump then table.insert(list, "Inf Jump") end
-    if St.Settings.DoubleJump then table.insert(list, "Dbl Jump") end
-    if St.Settings.ShiftLock then table.insert(list, "Shift Lock") end
-    if St.Settings.AntiAFK then table.insert(list, "Anti AFK") end
-    if St.Settings.RemoveFog then table.insert(list, "No Fog") end
-    if St.Settings.AntiVoid then table.insert(list, "Anti Void") end
-    if St.Settings.FpsBoost then table.insert(list, "FPS Boost") end
-    if #list==0 then
-        St.UIRefs.activeLbl.Text="Active Commands: None"
-    else
-        St.UIRefs.activeLbl.Text="Active Commands: "..table.concat(list, "  |  ")
-    end
-end
 function UI.makeToggle(parent,sName,labelTxt,onCb,langKey)
     local row=Instance_new("Frame"); row.Parent=parent
     row.Size=UDim2_new(1,0,0,34); row.BackgroundColor3=UI.C.ROW
@@ -2580,7 +2561,7 @@ function UI.makeToggle(parent,sName,labelTxt,onCb,langKey)
         local locked={AutoFarmLoot=true,KillerSafety=true,AutoEscape=true,AutoRevive=true,AutoSelfRevive=true,GhostMode=true,_killAll=true}
         St.Settings[sName]=not St.Settings[sName]; local on=St.Settings[sName]
         setVisual(on); if onCb then onCb(on) end; task.defer(F.saveSettings)
-        UI.updateActiveCommands()
+        if St.UIRefs._updateStatusBar then St.UIRefs._updateStatusBar() end
     end)
     St.toggleRefs[sName]=setVisual
     St.toggleCbs[sName]=onCb
@@ -2859,7 +2840,6 @@ local _LANG={
         sl_height="Height", sl_tilt="Tilt", sl_min_value="Min Value",
         sl_fly_speed="Fly Speed", sl_speed="Speed", sl_safety_dist="Safety Dist",
         sl_farm_speed="Farm Speed", sl_jump_power="Jump Power",
-        tog_jump_boost="Jump Boost",
         theme_lbl="UI Theme",
         confirm_close="Are you sure you want to close?",
         btn_yes="Yes", btn_no="No",
@@ -2870,6 +2850,7 @@ local _LANG={
         copy_btn=" COPY",
         toast_copied="  Link copied!",
         tog_shift_lock="Shift Lock",
+        tog_jump_boost="Jump Boost",
         revive_self_btn="Revive My Self  GO",
         tp_exit_btn="Teleport to Exit  GO",
         tp_survivor_btn="Random Survivor  TP"
@@ -2924,7 +2905,6 @@ local _LANG={
         sl_height="Высота", sl_tilt="Наклон", sl_min_value="Мин. ценность",
         sl_fly_speed="Скор. полёта", sl_speed="Скорость", sl_safety_dist="Дист. защиты",
         sl_farm_speed="Скор. фарма", sl_jump_power="Сила прыжка",
-        tog_jump_boost="Усиление прыжка",
         theme_lbl="Тема UI",
         confirm_close="Вы уверены, что хотите закрыть?",
         btn_yes="Да", btn_no="Нет",
@@ -2935,6 +2915,7 @@ local _LANG={
         copy_btn=" КОПИЯ",
         toast_copied="  Ссылка скопирована!",
         tog_shift_lock="Фиксация камеры",
+        tog_jump_boost="Усиление прыжка",
         revive_self_btn="Поднять себя  GO",
         tp_exit_btn="Телепорт к выходу  GO",
         tp_survivor_btn="Случайный выживший  TP"
@@ -2989,7 +2970,6 @@ local _LANG={
         sl_height="الارتفاع", sl_tilt="الميل", sl_min_value="أقل قيمة",
         sl_fly_speed="سرعة الطيران", sl_speed="السرعة", sl_safety_dist="مسافة الحماية",
         sl_farm_speed="سرعة الفارم", sl_jump_power="قوة القفز",
-        tog_jump_boost="تعزيز القفز",
         theme_lbl="ثيم الواجهة",
         confirm_close="هل أنت متأكد أنك تريد الإغلاق؟",
         btn_yes="نعم", btn_no="لا",
@@ -3000,6 +2980,7 @@ local _LANG={
         copy_btn=" نسخ",
         toast_copied="  تم نسخ الرابط!",
         tog_shift_lock="تثبيت الكاميرا",
+        tog_jump_boost="تعزيز القفز",
         revive_self_btn="إحياء نفسي  GO",
         tp_exit_btn="انتقال للمخرج  GO",
         tp_survivor_btn="ناجي عشوائي  TP"
@@ -3013,6 +2994,7 @@ _applyLang=function()
             if ref.origFont then ref.lbl.Font=ref.origFont end
         end
     end
+    if St.UIRefs._updateStatusBar then St.UIRefs._updateStatusBar() end
 end
 _LR=function(lbl,key)
     lbl.Text=_T(key)
@@ -3339,6 +3321,8 @@ local function buildUI()
         task.delay(0.35,function() MainFrame.Visible=false; menuAnimating=false end)
     end
     local TITLE_H=36
+    local STATUS_H=24
+    local BODY_TOP=TITLE_H+STATUS_H+4
     local TitleBar=Instance_new("Frame"); TitleBar.Parent=MainFrame
     TitleBar.Size=UDim2_new(1,0,0,TITLE_H); TitleBar.BackgroundColor3=UI.C.PANEL
     UI.registerTheme(TitleBar,"PANEL","BackgroundColor3")
@@ -3369,6 +3353,58 @@ local function buildUI()
     hbStroke.Color=UI.C.ACCENT; hbStroke.Thickness=1.4
     UI.registerTheme(hbStroke,"ACCENT","Color")
     HideBtn.MouseButton1Click:Connect(closeMenu)
+    local StatusBar=Instance_new("Frame"); StatusBar.Parent=MainFrame
+    StatusBar.Size=UDim2_new(1,0,0,STATUS_H)
+    StatusBar.Position=UDim2_new(0,0,0,TITLE_H+2)
+    StatusBar.BackgroundColor3=UI.C.PANEL
+    UI.registerTheme(StatusBar,"PANEL","BackgroundColor3")
+    StatusBar.BackgroundTransparency=0.3; StatusBar.BorderSizePixel=0
+    local stbCrn=Instance_new("UICorner"); stbCrn.Parent=StatusBar; stbCrn.CornerRadius=UDim_new(0,8)
+    local sbList=Instance_new("UIListLayout"); sbList.Parent=StatusBar
+    sbList.FillDirection=Enum.FillDirection.Horizontal
+    sbList.Padding=UDim_new(0,4)
+    sbList.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    sbList.VerticalAlignment=Enum.VerticalAlignment.Center
+    sbList.SortOrder=Enum.SortOrder.LayoutOrder
+    local sbPad=Instance_new("UIPadding"); sbPad.Parent=StatusBar
+    sbPad.PaddingTop=UDim_new(0,2); sbPad.PaddingBottom=UDim_new(0,2)
+    sbPad.PaddingLeft=UDim_new(0,4); sbPad.PaddingRight=UDim_new(0,4)
+    St.UIRefs.StatusBar=StatusBar
+    St.UIRefs._updateStatusBar=function()
+        if not St.UIRefs.StatusBar then return end
+        for _,child in ipairs(St.UIRefs.StatusBar:GetChildren()) do
+            if child:IsA("TextLabel") then
+                child:Destroy()
+            end
+        end
+        local active={}
+        if St.Settings.SpeedEnabled then table.insert(active,_T("tog_speed_boost")) end
+        if St.Settings.JumpBoost then table.insert(active,_T("tog_jump_boost")) end
+        if St.Settings.FlyEnabled then table.insert(active,_T("tog_fly")) end
+        if St.Settings.Noclip then table.insert(active,_T("tog_noclip")) end
+        if St.Settings.PlayerESP then table.insert(active,_T("tog_player_esp")) end
+        if St.Settings.AutoFarmLoot then table.insert(active,_T("tog_farm_loot")) end
+        if St.Settings.KillerSafety then table.insert(active,_T("tog_killer_safe")) end
+        if St.Settings.AutoEscape then table.insert(active,_T("tog_auto_escape")) end
+        if St.Settings.GhostMode then table.insert(active,_T("tog_ghost_mode")) end
+        if St.Settings._killAll then table.insert(active,_T("tog_kill_all")) end
+        for i,txt in ipairs(active) do
+            local pill=Instance_new("TextLabel")
+            pill.Parent=St.UIRefs.StatusBar
+            pill.Size=UDim2_new(0,0,0,18)
+            pill.AutomaticSize=Enum.AutomaticSize.X
+            pill.BackgroundColor3=UI.C.ACCDIM
+            UI.registerTheme(pill,"ACCDIM","BackgroundColor3")
+            pill.BackgroundTransparency=0.2
+            pill.Text=" "..txt.." "
+            pill.TextColor3=Color3_new(1,1,1)
+            pill.Font=Enum.Font.GothamBold
+            pill.TextSize=8
+            pill.TextXAlignment=Enum.TextXAlignment.Center
+            pill.LayoutOrder=i
+            local pCrn=Instance_new("UICorner"); pCrn.CornerRadius=UDim_new(1,0); pCrn.Parent=pill
+        end
+    end
     local guiDragging=false
     local guiDragStart,guiStartPos,guiDragInput=nil,nil,nil
     TitleBar.InputBegan:Connect(function(input)
@@ -3399,34 +3435,7 @@ local function buildUI()
         newY=math.clamp(newY,0,limitY)
         MainFrame.Position=UDim2_new(0,newX,0,newY)
     end)
-    
-    local ACTIVE_H = 22
-    local ActiveBar = Instance_new("Frame")
-    ActiveBar.Parent = MainFrame
-    ActiveBar.Size = UDim2_new(1, 0, 0, ACTIVE_H)
-    ActiveBar.Position = UDim2_new(0, 0, 0, TITLE_H)
-    ActiveBar.BackgroundColor3 = UI.C.PANEL
-    ActiveBar.BackgroundTransparency = 0.1
-    ActiveBar.BorderSizePixel = 0
-    UI.registerTheme(ActiveBar, "PANEL", "BackgroundColor3")
-    local abCrn = Instance_new("UICorner")
-    abCrn.CornerRadius = UDim_new(0, 8)
-    abCrn.Parent = ActiveBar
-    local ActiveLbl = Instance_new("TextLabel")
-    ActiveLbl.Parent = ActiveBar
-    ActiveLbl.Size = UDim2_new(1, -20, 1, 0)
-    ActiveLbl.Position = UDim2_new(0, 10, 0, 0)
-    ActiveLbl.BackgroundTransparency = 1
-    ActiveLbl.Text = "Active Commands: None"
-    ActiveLbl.TextColor3 = UI.C.ACCENT
-    ActiveLbl.Font = Enum.Font.GothamBold
-    ActiveLbl.TextSize = 9
-    ActiveLbl.TextXAlignment = Enum.TextXAlignment.Left
-    UI.registerTheme(ActiveLbl, "ACCENT", "TextColor3")
-    St.UIRefs.activeLbl = ActiveLbl
-
     local SIDEBAR_W=82
-    local BODY_TOP=TITLE_H+ACTIVE_H+2
     local Sidebar=Instance_new("Frame"); Sidebar.Parent=MainFrame
     Sidebar.Size=UDim2_new(0,SIDEBAR_W,1,-BODY_TOP)
     Sidebar.Position=UDim2_new(0,0,0,BODY_TOP)
@@ -3450,10 +3459,9 @@ local function buildUI()
         if St.Connections.State then St.Connections.State:Disconnect() end
         St.Fl.autoFarmRunning=false; St.Fl.killAllRunning=false; St.Settings.SpeedEnabled=false
         if St.Cn.speed then St.Cn.speed:Disconnect(); St.Cn.speed=nil end
-        F.stopJumpBoost()
         F.stopAutoEscape(); F.stopKillerSafety(); F.stopNoclip(); F.stopAntiAFK(); F.disableFogRemoval()
         F.stopAutoRevive(); F.stopAutoSelfRevive(); F.stopFly(); F.stopCustomAnim(Sv.LocalPlayer.Character)
-        F.stopFpsBoost()
+        F.stopFpsBoost(); F.stopJumpBoost()
         if St.Fl.ghostActive then F.toggleGhostMode(false) end
         St.Fl.reviveSelfPaused=false; St.Fl.farmPriority=0
         for _,data in pairs(St.Storage.Players) do
@@ -4190,66 +4198,54 @@ local function buildUI()
                 local h=c and c:FindFirstChildOfClass("Humanoid")
                 if h then h.WalkSpeed=16 end
             end
-            UI.updateActiveCommands()
         end,"tog_speed_boost")
         UI.A(settPage,subSp)
-        UI.makeSliderRow(subSp,_T("sl_speed"),1,300,St.Fl.currentSpeed,function(v)
-            St.Fl.currentSpeed=v
-            if St.Settings.SpeedEnabled then
-                local ch=Sv.LocalPlayer.Character
-                local hu=ch and ch:FindFirstChildOfClass("Humanoid")
+        ("Humanoid")
                 if hu then hu.WalkSpeed=St.Fl.currentSpeed end
             end
-            UI.updateActiveCommands()
         end,nil,"sl_speed")
-
+        
         local subJb,sllJb=UI.makeSubContainer(settPage)
         UI.makeToggle(mGrid,"JumpBoost",_T("tog_jump_boost"),function(on)
             subJb.Visible=on; subJb.Size=UDim2_new(1,0,0,on and sllJb.AbsoluteContentSize.Y or 0)
             if on then F.startJumpBoost() else F.stopJumpBoost() end
-            UI.updateActiveCommands()
         end,"tog_jump_boost")
         UI.A(settPage,subJb)
-        UI.makeSliderRow(subJb,_T("sl_jump_power"),10,300,St.Fl.jumpBoostPower,function(v)
-            St.Fl.jumpBoostPower=v
+        UI.makeSliderRow(subJb,_T("sl_jump_power"),1,300,St.Fl.jumpPower,function(v)
+            St.Fl.jumpPower=v
             if St.Settings.JumpBoost then
                 local ch=Sv.LocalPlayer.Character
                 local hu=ch and ch:FindFirstChildOfClass("Humanoid")
-                if hu then hu.JumpPower=v end
+                if hu then hu.JumpPower=St.Fl.jumpPower end
             end
-            UI.updateActiveCommands()
         end,nil,"sl_jump_power")
 
         local subFly,sllFly=UI.makeSubContainer(settPage)
         UI.makeToggle(mGrid,"FlyEnabled",_T("tog_fly"),function(on)
             subFly.Visible=on; subFly.Size=UDim2_new(1,0,0,on and sllFly.AbsoluteContentSize.Y or 0)
             if on then F.startFly() else F.stopFly() end
-            UI.updateActiveCommands()
         end,"tog_fly")
         UI.A(settPage,subFly)
         UI.makeSliderRow(subFly,_T("sl_fly_speed"),10,300,St.Fl.flySpeed,function(v) St.Fl.flySpeed=v end,nil,"sl_fly_speed")
-        
-        UI.makeToggle(mGrid,"InfiniteJump",_T("tog_inf_jump"),function(on) if on then F.startInfiniteJump() else F.stopInfiniteJump() end UI.updateActiveCommands() end,"tog_inf_jump")
-        UI.makeToggle(mGrid,"DoubleJump",_T("tog_double_jump"),function(on) if on then F.setupDoubleJump() end UI.updateActiveCommands() end,"tog_double_jump")
-        UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end UI.updateActiveCommands() end,"tog_noclip")
-        UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) UI.updateActiveCommands() end,"tog_ghost_mode")
+        UI.makeToggle(mGrid,"InfiniteJump",_T("tog_inf_jump"),function(on) if on then F.startInfiniteJump() else F.stopInfiniteJump() end end,"tog_inf_jump")
+        UI.makeToggle(mGrid,"DoubleJump",_T("tog_double_jump"),function(on) if on then F.setupDoubleJump() end end,"tog_double_jump")
+        UI.makeToggle(mGrid,"Noclip",_T("tog_noclip"),function(on) if on then F.startNoclip() else F.stopNoclip() end end,"tog_noclip")
+        UI.makeToggle(mGrid,"GhostMode",_T("tog_ghost_mode"),function(on) F.toggleGhostMode(on) end,"tog_ghost_mode")
         UI.makeToggle(mGrid,"ShiftLock",_T("tog_shift_lock"),function(on)
             if on then F.startShiftLock() else F.stopShiftLock() end
-            UI.updateActiveCommands()
         end,"tog_shift_lock")
         UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_env_util")
         local eGrid=UI.makeGridContainer(settPage)
         UI.A(settPage,eGrid)
-        UI.makeToggle(eGrid,"RemoveFog",_T("tog_remove_fog"),function(on) if on then F.enableFogRemoval() else F.disableFogRemoval() end UI.updateActiveCommands() end,"tog_remove_fog")
-        UI.makeToggle(eGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) F.setActiveAnim(on and "Snowman" or nil) UI.updateActiveCommands() end,"tog_snow_anim")
-        UI.makeToggle(eGrid,"RoyalAnimation",_T("tog_royal_anim"),function(on) F.setActiveAnim(on and "Royal" or nil) UI.updateActiveCommands() end,"tog_royal_anim")
-        UI.makeToggle(eGrid,"NinjaAnimation",_T("tog_ninja_anim"),function(on) F.setActiveAnim(on and "Ninja" or nil) UI.updateActiveCommands() end,"tog_ninja_anim")
-        UI.makeToggle(eGrid,"AntiVoid",_T("tog_anti_void"),function() UI.updateActiveCommands() end,"tog_anti_void")
-        UI.makeToggle(eGrid,"AntiAFK",_T("tog_anti_afk"),function(on) if on then F.startAntiAFK() else F.stopAntiAFK() end UI.updateActiveCommands() end,"tog_anti_afk")
+        UI.makeToggle(eGrid,"RemoveFog",_T("tog_remove_fog"),function(on) if on then F.enableFogRemoval() else F.disableFogRemoval() end end,"tog_remove_fog")
+        UI.makeToggle(eGrid,"SnowAnimation",_T("tog_snow_anim"),function(on) F.setActiveAnim(on and "Snowman" or nil) end,"tog_snow_anim")
+        UI.makeToggle(eGrid,"RoyalAnimation",_T("tog_royal_anim"),function(on) F.setActiveAnim(on and "Royal" or nil) end,"tog_royal_anim")
+        UI.makeToggle(eGrid,"NinjaAnimation",_T("tog_ninja_anim"),function(on) F.setActiveAnim(on and "Ninja" or nil) end,"tog_ninja_anim")
+        UI.makeToggle(eGrid,"AntiVoid",_T("tog_anti_void"),nil,"tog_anti_void")
+        UI.makeToggle(eGrid,"AntiAFK",_T("tog_anti_afk"),function(on) if on then F.startAntiAFK() else F.stopAntiAFK() end end,"tog_anti_afk")
         UI.makeToggle(eGrid,"FpsBoost",_T("tog_fps_boost"),function(on)
             if on then F.startFpsBoost() else F.stopFpsBoost() end
-            UI.updateActiveCommands()
         end,"tog_fps_boost")
         UI.A(settPage,UI.makeDivider(settPage))
         _LS(settPage,"sec_ui_cust")
@@ -4637,6 +4633,7 @@ local function buildUI()
             MainFrame.Size=UDim2_new(0,math_floor(St.UIRefs.baseW*St.Fl.winSize),0,math_floor(St.UIRefs.baseH*St.Fl.winSize))
         end
     end)
+    if St.UIRefs._updateStatusBar then St.UIRefs._updateStatusBar() end
     do
         local dragging=false
         local dragStart,startPos,hasDragged,dragInput=nil,nil,false,nil
@@ -4679,10 +4676,9 @@ local function buildUI()
                 pcall(cb,true)
             end
         end
-        UI.updateActiveCommands()
     end)
 
-    local function showChangelog(parentGui)
+local function showChangelog(parentGui)
         if not St.Settings.ShowAds then return end
         local _lng=St.Language
         local titleTxt=({EN="✨ What's New in V6.2 ✨",RU="✨ Что нового в V6.2 ✨",AR="✨ الجديد في V6.2 ✨"})[_lng] or "✨ What's New in V6.2 ✨"
@@ -4861,7 +4857,6 @@ local function init()
         if St.Settings.FpsBoost then F.startFpsBoost() end
         if St.Settings.Noclip then F.startNoclip() end
         if St.Settings.FlyEnabled then F.startFly() end
-        if St.Settings.JumpBoost then F.startJumpBoost() end
         if St.Settings.SpeedEnabled then
             if St.Cn.speed then St.Cn.speed:Disconnect() end
             local _spChar2,_spHum2=nil,nil
@@ -4872,6 +4867,7 @@ local function init()
                 if _spHum2 and _spHum2.WalkSpeed~=St.Fl.currentSpeed then _spHum2.WalkSpeed=St.Fl.currentSpeed end
             end)
         end
+        if St.Settings.JumpBoost then F.startJumpBoost() end
         if St.Settings.LootESP then F.updateLootESP() end
         if St.Settings.ExitESP then F.updateExitESP() end
         if St.Settings.ShowCoins and St.CoinsHUD_ref then St.CoinsHUD_ref.Visible=true end
@@ -4918,7 +4914,6 @@ local function init()
         if St.Settings.DoubleJump then F.setupDoubleJump() end
         if St.Settings.Noclip then F.rebuildNoclipCache(); F.startNoclip() end
         if St.Settings.FlyEnabled then F.startFly() end
-        if St.Settings.JumpBoost then F.startJumpBoost() end
         if St.Settings.SpeedEnabled then
             local hu=char:FindFirstChildOfClass("Humanoid")
             if hu then hu.WalkSpeed=St.Fl.currentSpeed end
