@@ -5015,4 +5015,64 @@ local function init()
         end
     end)
 end
-init()
+-- ==========================================
+-- 🚨 نظام صيد الأخطاء (Crash Logger)
+-- ==========================================
+local function _ShowCrashLog(errMessage)
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "JxH_CrashLog"
+    sg.DisplayOrder = 9999
+    
+    -- محاولة وضع الواجهة في مكان آمن
+    pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not sg.Parent then 
+        pcall(function() sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end) 
+    end
+    
+    local sf = Instance.new("ScrollingFrame")
+    sf.Parent = sg
+    sf.Size = UDim2.new(0.9, 0, 0.6, 0)
+    sf.Position = UDim2.new(0.05, 0, 0.2, 0)
+    sf.BackgroundColor3 = Color3.fromRGB(20, 5, 5)
+    sf.BorderSizePixel = 2
+    sf.BorderColor3 = Color3.fromRGB(255, 50, 50)
+    sf.CanvasSize = UDim2.new(0, 0, 3, 0)
+    sf.ScrollBarThickness = 6
+    
+    local txt = Instance.new("TextLabel")
+    txt.Parent = sf
+    txt.Size = UDim2.new(1, -10, 1, -10)
+    txt.Position = UDim2.new(0, 5, 0, 5)
+    txt.BackgroundTransparency = 1
+    txt.TextColor3 = Color3.fromRGB(255, 120, 120)
+    txt.TextWrapped = true
+    txt.Font = Enum.Font.Code
+    txt.TextSize = 12
+    txt.TextXAlignment = Enum.TextXAlignment.Left
+    txt.TextYAlignment = Enum.TextYAlignment.Top
+    txt.Text = "⚠️ JohnyX Script Crash Report ⚠️\n\n" .. tostring(errMessage)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Parent = sg
+    closeBtn.Size = UDim2.new(0.9, 0, 0, 35)
+    closeBtn.Position = UDim2.new(0.05, 0, 0.82, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    closeBtn.Text = "إغلاق التقرير (Close)"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        sg:Destroy()
+    end)
+end
+
+-- تغليف نقطة التشغيل الرئيسية
+local success, err = xpcall(init, function(msg)
+    return tostring(msg) .. "\n\nTraceback:\n" .. debug.traceback()
+end)
+
+-- إذا انهار السكربت، اعرض واجهة الخطأ
+if not success then
+    _ShowCrashLog(err)
+end
