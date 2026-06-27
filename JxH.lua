@@ -25,7 +25,8 @@ local State = {
     LobbyTarget = nil,
     LastJump = 0,
     ActionDelay = 0,
-    TargetLocker = nil
+    TargetLocker = nil,
+    MapWanderTarget = nil
 }
 
 local LOBBY_COORDS = {
@@ -74,21 +75,22 @@ local function getTeam(p)
     return "lobby"
 end
 
-local function isDowned(p)
-    local c = p.Character
-    if not c then return false end
-    local h = c:FindFirstChildOfClass("Humanoid")
-    if not h or h.Health <= 0 then return false end
-    local r = c:FindFirstChild("HumanoidRootPart")
-    if not r then return false end
-    local boh = r:FindFirstChild("BleedOutHealth")
+local function isPlayerDowned(player)
+    local char = player.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or (hum.Health <= 0 and hum.MaxHealth > 0) then return false end
+    if char:FindFirstChildOfClass("ForceField") then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local boh = root:FindFirstChild("BleedOutHealth")
     if boh and boh.Enabled then return true end
-    local dv = c:FindFirstChild("Downed")
+    local dv = char:FindFirstChild("Downed")
     if dv and ((dv:IsA("BoolValue") and dv.Value) or (dv:IsA("IntValue") and dv.Value > 0)) then return true end
-    local inc = c:FindFirstChild("Incapacitated")
+    local inc = char:FindFirstChild("Incapacitated")
     if inc and ((inc:IsA("BoolValue") and inc.Value) or (inc:IsA("IntValue") and inc.Value > 0)) then return true end
-    local s = h:GetState()
-    if (s == Enum.HumanoidStateType.FallingDown or s == Enum.HumanoidStateType.Ragdoll) and h.WalkSpeed < 5 then return true end
+    local state = hum:GetState()
+    if (state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.Ragdoll) and hum.WalkSpeed < 5 then return true end
     return false
 end
 
@@ -106,64 +108,86 @@ local function getMap()
     return nil
 end
 
-local function getClosest(list, pos)
-    local closest = nil
-    local minDist = math.huge
-    local pos2D = Vector3.new(pos.X, 0, pos.Z)
-    for _, obj in ipairs(list) do
-        local objPos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetModelCFrame().Position) or obj.Position
-        local objPos2D = Vector3.new(objPos.X, 0, objPos.Z)
-        local d = (pos2D - objPos2D).Magnitude
-        if d < minDist then
-            minDist = d
-            closest = obj
-        end
+local lootValueCache = setmetatable({}, {__mode="k"})
+local function getLootValue(obj)
+    if lootValueCache[obj] ~= nil then return lootValueCache[obj] end
+    local function cache(v)
+        if v == 20 then v = nil end
+        lootValueCache[obj] = v
+        return v
     end
-    return closest, minDist
-end
-
-local function interact(obj)
-    if not obj then return end
+    local attr = obj:GetAttribute("Value") or obj:GetAttribute("Amount")
+    if attr then
+        local val = tonumber(attr)
+        if val then return cache(val) end
+    end
+    local fallback = nil
     for _, c in ipairs(obj:GetDescendants()) do
-        if c:IsA("ProximityPrompt") and c.Enabled then
-            pcall(function() fireproximityprompt(c) end)
-        elseif c:IsA("ClickDetector") then
-            pcall(function() fireclickdetector(c, 0) end)
-        end
-    end
-end
-
-local function getLoot()
-    local loot = {}
-    local map = getMap()
-    local searchRoot = map or workspace
-    local lf = searchRoot:FindFirstChild("LootSpawns", true)
-    if lf then
-        for _, obj in ipairs(lf:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector") then
-                local parent = obj.Parent
-                local target = nil
-                if parent:IsA("BasePart") then
-                    target = parent
-                elseif parent:IsA("Model") then
-                    target = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
-                end
-                if target and target.Transparency < 0.9 then
-                    table.insert(loot, target)
-                end
+        if c:IsA("ProximityPrompt") then
+            local at = c:GetAttribute("ActionText")
+            if at and type(at) == "string" then
+                local n = at:match("%+(%d+)")
+                if n then fallback = tonumber(n) break end
             end
+            local txt = c.ActionText .. " " .. c.ObjectText
+            local n = txt:match("%+(%d+)") or txt:match("(%d+)%s*[Cc]oin") or txt:match("(%d+)%s*[Gg]old")
+            if n then fallback = tonumber(n) break end
+        elseif c:IsA("ClickDetector") then
+            local at = c:GetAttribute("ActionText")
+            if at and type(at) == "string" then
+                local n = at:match("%+(%d+)")
+                if n then fallback = tonumber(n) break end
+            end
+        elseif c:IsA("TextLabel") or c:IsA("TextButton") then
+            local n = c.Text:match("%+(%d+)")
+            if n then fallback = tonumber(n) break end
+        elseif (c:IsA("IntValue") or c:IsA("NumberValue")) and not fallback then
+            fallback = c.Value
+        elseif c:IsA("StringValue") and not fallback then
+            local n = tonumber(c.Value)
+            if n then fallback = n end
         end
     end
-    return loot
+    if fallback then return cache(fallback) end
+    local map = getMap()
+    local lootFolder = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
+    if lootFolder and obj:IsDescendantOf(lootFolder) then
+        return cache(1)
+    end
+    return cache(nil)
 end
 
-local function getOpenExits()
-    local exits = {}
+local function tryTriggerLoot(srcObj)
+    if not srcObj then return end
+    local ok, descs = pcall(function() return srcObj:GetDescendants() end)
+    if not ok or not descs then return end
+    for _, child in ipairs(descs) do
+        if child:IsA("ProximityPrompt") and child.Enabled then
+            pcall(function()
+                local oldLos = child.RequiresLineOfSight
+                local oldMax = child.MaxActivationDistance
+                child.RequiresLineOfSight = false
+                child.MaxActivationDistance = 9e9
+                fireproximityprompt(child)
+                task.delay(0.5, function()
+                    if child and child.Parent then
+                        child.RequiresLineOfSight = oldLos
+                        child.MaxActivationDistance = oldMax
+                    end
+                end)
+            end)
+        elseif child:IsA("ClickDetector") then
+            pcall(function() fireclickdetector(child, 0) end)
+        end
+    end
+end
+
+local function getReadyExit()
     local map = getMap()
-    if not map then return exits end
-    local f = map:FindFirstChild("Exits", true)
-    if f then
-        for _, exitObj in ipairs(f:GetChildren()) do
+    if not map then return nil end
+    local exitsFolder = map:FindFirstChild("Exits", true)
+    if exitsFolder then
+        for _, exitObj in ipairs(exitsFolder:GetChildren()) do
             local hasTrigger = false
             for _, desc in ipairs(exitObj:GetDescendants()) do
                 if desc:IsA("TouchTransmitter") and desc.Parent and desc.Parent.Name == "Trigger" then
@@ -173,22 +197,77 @@ local function getOpenExits()
             end
             if hasTrigger then
                 local bouncer = exitObj:FindFirstChild("Bouncer", true)
-                if not bouncer or not bouncer:IsA("BasePart") or not bouncer.CanCollide then
-                    local gatePart = exitObj.PrimaryPart
-                    if not gatePart then
-                        for _, p in ipairs(exitObj:GetDescendants()) do
-                            if p:IsA("BasePart") and p.Name ~= "Bouncer" then
-                                gatePart = p
-                                break
-                            end
-                        end
-                    end
-                    if gatePart then table.insert(exits, gatePart) end
+                local bouncerClear = (not bouncer or not bouncer:IsA("BasePart") or not bouncer.CanCollide)
+                if bouncerClear then return exitObj end
+            end
+        end
+    end
+    return nil
+end
+
+local function resolveGatePart(exitObj)
+    if exitObj:IsA("BasePart") then return exitObj end
+    if exitObj:IsA("Model") then
+        for _, name in ipairs({"Getawaygate", "GetawayGate", "getawaygate", "Gate", "Exit", "Door", "Escape"}) do
+            local found = exitObj:FindFirstChild(name, true)
+            if found and found:IsA("BasePart") then return found end
+        end
+        local biggest, biggestVol = nil, 0
+        for _, p in ipairs(exitObj:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "Bouncer" then
+                local vol = p.Size.X * p.Size.Y * p.Size.Z
+                if vol > biggestVol then biggest = p; biggestVol = vol end
+            end
+        end
+        return biggest or exitObj.PrimaryPart
+    end
+    return nil
+end
+
+local _lockerCache = {models = {}, time = 0}
+local function getLockerModels()
+    local now = tick()
+    if now - _lockerCache.time < 4 and #_lockerCache.models > 0 then
+        local valid = true
+        for _, m in ipairs(_lockerCache.models) do if not m or not m.Parent then valid = false; break end end
+        if valid then return _lockerCache.models end
+    end
+    local models = {}
+    local seen = {}
+    local map = getMap()
+    local folder = nil
+    for _, name in ipairs({"Lockers", "Locker", "lockers", "locker", "Wardrobes", "Wardrobe", "Cabinets", "Cabinet", "Hideouts", "Hideout", "Closets", "Closet"}) do
+        local f = (map and map:FindFirstChild(name)) or workspace:FindFirstChild(name)
+        if f then folder = f; break end
+    end
+    if folder then
+        for _, obj in ipairs(folder:GetChildren()) do
+            if obj:IsA("Model") and not seen[obj] then seen[obj] = true; table.insert(models, obj) end
+        end
+    end
+    if #models == 0 then
+        local searchRoot = map or workspace
+        for _, obj in ipairs(searchRoot:GetDescendants()) do
+            if obj:IsA("Model") and not seen[obj] and obj ~= LP.Character then
+                local n = obj.Name:lower()
+                for _, kw in ipairs({"locker", "wardrobe", "cabinet", "closet", "hideout", "armoire", "coffin", "chest"}) do
+                    if n:find(kw) then seen[obj] = true; table.insert(models, obj); break end
                 end
             end
         end
     end
-    return exits
+    _lockerCache.models = models
+    _lockerCache.time = tick()
+    return models
+end
+
+local function checkLineOfSight(startPos, endPos, ignoreList)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = ignoreList
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local dir = (endPos - startPos)
+    local ray = workspace:Raycast(startPos, dir, rayParams)
+    return ray == nil
 end
 
 local function smartMove(targetPos, isMovingTarget)
@@ -215,6 +294,7 @@ local function smartMove(targetPos, isMovingTarget)
                 hum.Jump = true
                 PathData.Path = nil
                 PathData.StuckCount = 0
+                State.MapWanderTarget = nil
             end
         else
             PathData.StuckCount = 0
@@ -318,7 +398,7 @@ local function logicSurvivor(root, hum)
                 kDist = d
                 killer = pr
             elseif t == "survivor" then
-                if isDowned(p) then
+                if isPlayerDowned(p) then
                     table.insert(downedSurv, pr)
                 else
                     table.insert(upSurvs, pr)
@@ -334,85 +414,143 @@ local function logicSurvivor(root, hum)
             hum.Jump = true
         else
             hum:MoveTo(root.Position)
-            if State.TargetLocker then interact(State.TargetLocker) end
+            if State.TargetLocker then tryTriggerLoot(State.TargetLocker) end
             return
         end
     end
 
     if killer and kDist < 45 then
         if kDist < 25 then
-            local lockers = {}
-            local map = getMap()
-            local searchRoot = map or workspace
-            for _, obj in ipairs(searchRoot:GetDescendants()) do
-                if obj:IsA("Model") and obj ~= LP.Character then
-                    local n = obj.Name:lower()
-                    if n:find("locker") or n:find("wardrobe") or n:find("cabinet") or n:find("closet") then
-                        table.insert(lockers, obj)
-                    end
+            local lockers = getLockerModels()
+            local bestLocker, bestLockerDist = nil, math.huge
+            local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+            for _, cl in ipairs(lockers) do
+                local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+                local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
+                local d = (rootPos2D - clPos2D).Magnitude
+                if d < bestLockerDist then
+                    bestLockerDist = d
+                    bestLocker = cl
                 end
             end
-            local cl, cd = getClosest(lockers, root.Position)
-            if cl and cd < 40 then
-                local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            if bestLocker and bestLockerDist < 40 then
+                local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
                 smartMove(targetPos, false)
-                if cd < 6 then
-                    interact(cl)
+                if bestLockerDist < 6 then
+                    tryTriggerLoot(bestLocker)
                     State.IsHiding = true
-                    State.TargetLocker = cl
+                    State.TargetLocker = bestLocker
                 end
                 return
             end
         end
         
         local dir = (root.Position - killer.Position).Unit
-        local escapePos = root.Position + (dir * 40)
+        local escapePos = root.Position + (dir * 25)
         smartMove(escapePos, false)
         return
     end
 
-    local openExits = getOpenExits()
-    if #openExits > 0 then
-        local ce, cd = getClosest(openExits, root.Position)
-        if ce then
-            smartMove(ce.Position, false)
-            if cd < 6 then interact(ce.Parent) end
+    local readyExit = getReadyExit()
+    if readyExit then
+        local gatePart = resolveGatePart(readyExit)
+        if gatePart then
+            smartMove(gatePart.Position, false)
+            local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(gatePart.Position.X, 0, gatePart.Position.Z)).Magnitude
+            if d < 6 then tryTriggerLoot(readyExit) end
             return
         end
     end
 
-    if isDowned(LP) then
-        local cs, cd = getClosest(upSurvs, root.Position)
-        if cs then smartMove(cs.Position, true) end
+    if isPlayerDowned(LP) then
+        local bestSurv, bestSurvDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cs in ipairs(upSurvs) do
+            local csPos2D = Vector3.new(cs.Position.X, 0, cs.Position.Z)
+            local d = (rootPos2D - csPos2D).Magnitude
+            if d < bestSurvDist then
+                bestSurvDist = d
+                bestSurv = cs
+            end
+        end
+        if bestSurv then smartMove(bestSurv.Position, true) end
         return
     end
 
     if #downedSurv > 0 then
-        local cs, cd = getClosest(downedSurv, root.Position)
-        if cs then
-            smartMove(cs.Position, true)
-            if cd < 6 then
+        local bestDowned, bestDownedDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cs in ipairs(downedSurv) do
+            local csPos2D = Vector3.new(cs.Position.X, 0, cs.Position.Z)
+            local d = (rootPos2D - csPos2D).Magnitude
+            if d < bestDownedDist then
+                bestDownedDist = d
+                bestDowned = cs
+            end
+        end
+        if bestDowned then
+            smartMove(bestDowned.Position, true)
+            if bestDownedDist < 6 then
                 hum:MoveTo(root.Position)
-                interact(cs.Parent)
+                tryTriggerLoot(bestDowned.Parent)
             end
             return
         end
     end
 
-    local loot = getLoot()
-    if #loot > 0 then
-        local cl, cd = getClosest(loot, root.Position)
-        if cl then
-            smartMove(cl.Position, false)
-            if cd < 6 then
+    local map = getMap()
+    local lootFolder = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
+    if lootFolder then
+        local bestTarget, bestSrc, minDist = nil, nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, obj in ipairs(lootFolder:GetDescendants()) do
+            if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
+                local target = nil
+                if obj:IsA("Model") or obj:IsA("Folder") then
+                    target = (obj:IsA("Model") and obj.PrimaryPart) or obj:FindFirstChildWhichIsA("BasePart", true)
+                elseif obj:IsA("BasePart") then
+                    target = obj
+                end
+                if target and target.Transparency < 0.9 then
+                    local val = getLootValue(obj)
+                    if val and val >= 1 and val ~= 20 then
+                        local targetPos2D = Vector3.new(target.Position.X, 0, target.Position.Z)
+                        local d = (rootPos2D - targetPos2D).Magnitude
+                        if d < minDist then
+                            minDist = d
+                            bestTarget = target
+                            bestSrc = obj
+                        end
+                    end
+                end
+            end
+        end
+        if bestTarget then
+            smartMove(bestTarget.Position, false)
+            if minDist < 6 then
                 hum:MoveTo(root.Position)
-                interact(cl)
+                tryTriggerLoot(bestSrc)
             end
             return
         end
     end
     
-    logicLobby(root, hum)
+    if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
+        local nodes = {}
+        if lootFolder then
+            for _, v in ipairs(lootFolder:GetDescendants()) do
+                if v:IsA("BasePart") then table.insert(nodes, v.Position) end
+            end
+        end
+        if #nodes > 0 then
+            State.MapWanderTarget = nodes[math.random(1, #nodes)]
+        else
+            State.MapWanderTarget = root.Position + Vector3.new(math.random(-20, 20), 0, math.random(-20, 20))
+        end
+    end
+    if State.MapWanderTarget then
+        smartMove(State.MapWanderTarget, false)
+    end
 end
 
 local function logicKiller(root, hum)
@@ -420,7 +558,7 @@ local function logicKiller(root, hum)
     local sDist = math.huge
     
     for _, p in ipairs(Sv.Players:GetPlayers()) do
-        if p ~= LP and getTeam(p) == "survivor" and not isDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+        if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
             local pr = p.Character.HumanoidRootPart
             local d = (root.Position - pr.Position).Magnitude
             if d < sDist then
@@ -447,28 +585,48 @@ local function logicKiller(root, hum)
     local now = tick()
     if now - State.ActionDelay > 3 then
         State.ActionDelay = now
-        local lockers = {}
+        local lockers = getLockerModels()
+        local bestLocker, bestLockerDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cl in ipairs(lockers) do
+            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
+            local d = (rootPos2D - clPos2D).Magnitude
+            if d < bestLockerDist then
+                bestLockerDist = d
+                bestLocker = cl
+            end
+        end
+        if bestLocker then
+            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
+            smartMove(targetPos, false)
+            if bestLockerDist < 7 then
+                tryTriggerLoot(bestLocker)
+                if tool then tool:Activate() end
+            end
+            return
+        end
+    end
+
+    if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
         local map = getMap()
-        local searchRoot = map or workspace
-        for _, obj in ipairs(searchRoot:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LP.Character then
-                local n = obj.Name:lower()
-                if n:find("locker") or n:find("wardrobe") or n:find("cabinet") or n:find("closet") then
-                    table.insert(lockers, obj)
+        local nodes = {}
+        if map then
+            local lf = map:FindFirstChild("LootSpawns", true)
+            if lf then
+                for _, v in ipairs(lf:GetDescendants()) do
+                    if v:IsA("BasePart") then table.insert(nodes, v.Position) end
                 end
             end
         end
-        if #lockers > 0 then
-            local cl, cd = getClosest(lockers, root.Position)
-            if cl then
-                local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-                smartMove(targetPos, false)
-                if cd < 7 then
-                    interact(cl)
-                    if tool then tool:Activate() end
-                end
-            end
+        if #nodes > 0 then
+            State.MapWanderTarget = nodes[math.random(1, #nodes)]
+        else
+            State.MapWanderTarget = root.Position + Vector3.new(math.random(-20, 20), 0, math.random(-20, 20))
         end
+    end
+    if State.MapWanderTarget then
+        smartMove(State.MapWanderTarget, false)
     end
 end
 
@@ -481,6 +639,7 @@ btn.MouseButton1Click:Connect(function()
         State.LobbyTarget = nil
         State.IsHiding = false
         State.TargetLocker = nil
+        State.MapWanderTarget = nil
         PathData.Path = nil
     else
         btn.Text = "Auto SH: OFF"
