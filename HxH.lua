@@ -1,176 +1,3 @@
-do
-local DG=Instance.new("ScreenGui")
-DG.Name="JxH_Debug"
-DG.DisplayOrder=999999
-DG.ResetOnSpawn=false
-DG.IgnoreGuiInset=true
-local ap=false
-for _,gf in ipairs({
-function()return gethui and gethui()end,
-function()return get_core_gui and get_core_gui()end,
-function()return game:FindService("CoreGui")or game:GetService("CoreGui")end,
-function()return game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui",5)end,
-function()return game:GetService("StarterGui")end
-})do
-if ap then break end
-local ok,pr=pcall(gf)
-if ok and pr then
-local ok2=pcall(function()DG.Parent=pr end)
-if ok2 and DG.Parent then ap=true end
-end
-end
-if not ap then
-local pl=game:GetService("Players").LocalPlayer
-if pl then
-local pg=pl:FindFirstChild("PlayerGui")or pl:WaitForChild("PlayerGui",10)
-if pg then pcall(function()DG.Parent=pg end)end
-end
-end
-local MF=Instance.new("Frame")
-MF.Size=UDim2.new(0,450,0,350)
-MF.Position=UDim2.new(0,15,0.5,-175)
-MF.BackgroundColor3=Color3.fromRGB(15,15,20)
-MF.BorderSizePixel=0
-MF.Active=true
-MF.Draggable=true
-MF.ZIndex=999999
-MF.Parent=DG
-local MC=Instance.new("UICorner")
-MC.CornerRadius=UDim.new(0,8)
-MC.Parent=MF
-local MS=Instance.new("UIStroke")
-MS.Color=Color3.fromRGB(255,50,50)
-MS.Thickness=2
-MS.Parent=MF
-local TT=Instance.new("TextLabel")
-TT.Size=UDim2.new(1,0,0,30)
-TT.BackgroundColor3=Color3.fromRGB(30,10,10)
-TT.BorderSizePixel=0
-TT.Text="⚠ Live Debug Console"
-TT.TextColor3=Color3.fromRGB(255,100,100)
-TT.Font=Enum.Font.GothamBold
-TT.TextSize=14
-TT.Parent=MF
-local TC=Instance.new("UICorner")
-TC.CornerRadius=UDim.new(0,8)
-TC.Parent=TT
-local SF=Instance.new("ScrollingFrame")
-SF.Size=UDim2.new(1,-10,1,-75)
-SF.Position=UDim2.new(0,5,0,35)
-SF.BackgroundTransparency=1
-SF.BorderSizePixel=0
-SF.ScrollBarThickness=4
-SF.ScrollBarImageColor3=Color3.fromRGB(255,100,100)
-SF.CanvasSize=UDim2.new(0,0,0,0)
-SF.AutomaticCanvasSize=Enum.AutomaticSize.Y
-SF.Parent=MF
-local LT=Instance.new("TextLabel")
-LT.Size=UDim2.new(1,-10,0,0)
-LT.Position=UDim2.new(0,5,0,0)
-LT.BackgroundTransparency=1
-LT.Text=""
-LT.TextColor3=Color3.fromRGB(255,200,200)
-LT.Font=Enum.Font.Code
-LT.TextSize=11
-LT.TextXAlignment=Enum.TextXAlignment.Left
-LT.TextYAlignment=Enum.TextYAlignment.Top
-LT.TextWrapped=true
-LT.RichText=false
-LT.Parent=SF
-local BC=Instance.new("Frame")
-BC.Size=UDim2.new(1,0,0,30)
-BC.Position=UDim2.new(0,0,1,-30)
-BC.BackgroundTransparency=1
-BC.Parent=MF
-local CB=Instance.new("TextButton")
-CB.Size=UDim2.new(0.45,-5,1,-6)
-CB.Position=UDim2.new(0.025,0,0,3)
-CB.BackgroundColor3=Color3.fromRGB(40,100,200)
-CB.Text="📋 Copy"
-CB.TextColor3=Color3.new(1,1,1)
-CB.Font=Enum.Font.GothamBold
-CB.TextSize=12
-CB.BorderSizePixel=0
-CB.Parent=BC
-local CC=Instance.new("UICorner")
-CC.CornerRadius=UDim.new(0,6)
-CC.Parent=CB
-local XB=Instance.new("TextButton")
-XB.Size=UDim2.new(0.45,-5,1,-6)
-XB.Position=UDim2.new(0.525,0,0,3)
-XB.BackgroundColor3=Color3.fromRGB(200,50,50)
-XB.Text="✕ Close"
-XB.TextColor3=Color3.new(1,1,1)
-XB.Font=Enum.Font.GothamBold
-XB.TextSize=12
-XB.BorderSizePixel=0
-XB.Parent=BC
-local XC=Instance.new("UICorner")
-XC.CornerRadius=UDim.new(0,6)
-XC.Parent=XB
-local function AL(m)
-if not LT or not LT.Parent then return end
-pcall(function()
-local t=os.date("%H:%M:%S")
-LT.Text=LT.Text.."["..t.."] "..tostring(m).."\n"
-SF.CanvasPosition=Vector2.new(0,999999)
-end)
-end
-CB.MouseButton1Click:Connect(function()
-local ok
-if setclipboard then ok=pcall(setclipboard,LT.Text)
-elseif toclipboard then ok=pcall(toclipboard,LT.Text)
-elseif Clipboard then ok=pcall(Clipboard.set,LT.Text)end
-if not ok then AL("Clipboard failed")end
-end)
-XB.MouseButton1Click:Connect(function()
-pcall(function()DG:Destroy()end)
-end)
-AL("Debug Console Ready")
-local op=print
-local ow=warn
-local oe=error
-print=function(...)
-local a={...}
-local m=""
-for i,v in ipairs(a)do m=m..tostring(v)..(i<#a and" "or"")end
-op(...)
-AL(m)
-end
-warn=function(...)
-local a={...}
-local m=""
-for i,v in ipairs(a)do m=m..tostring(v)..(i<#a and" "or"")end
-ow(...)
-AL("[WARN] "..m)
-end
-error=function(m,l)
-AL("[ERROR] "..tostring(m))
-oe(m,l or 2)
-end
-pcall(function()
-local LS=game:GetService("LogService")
-if LS and LS.MessageOut then
-LS.MessageOut:Connect(function(msg,typ)
-if typ==Enum.MessageType.MessageError or typ==Enum.MessageType.MessageWarning then
-AL("[LOG] "..tostring(msg))
-end
-end)
-end
-end)
-pcall(function()
-local SC=game:GetService("ScriptContext")
-if SC and SC.Error then
-SC.Error:Connect(function(msg,trace,scr)
-AL("[SCRIPT ERROR] "..tostring(msg))
-if trace then AL(trace)end
-end)
-end
-end)
-_G.DebugLog=AL
-_G.DebugGui=DG
-end
-
 local UPDATE_VERSION = "V6.2"
 local UPDATE_TEXT_EN = "1. 🛠️ <b>Bug Fix:</b> Loot ESP/Auto Farm, Kill All & UI bugs fixed \n2. ✨ <b>New:</b> Arabic language, new animations & OLED black theme \n3. 🐛 <b>Bug Fixes</b> \n4. 🎨 <b>Color Theme Improved</b> \n5. 🌫️ <b>Fog Removal Improved</b> \n6. 🚀 <b>Other Improvements</b> "
 local UPDATE_TEXT_RU = "1. 🛠️ <b>Исправлено:</b> ESP лута/Автофарм, Kill All и ошибки интерфейса \n2. ✨ <b>Новое:</b> Арабский язык, новые анимации и чёрная OLED-тема \n3. 🐛 <b>Исправлены ошибки</b> \n4. 🎨 <b>Улучшена цветовая тема</b> \n5. 🌫️ <b>Улучшено удаление тумана</b> \n6. 🚀 <b>Другие улучшения</b> "
@@ -2464,8 +2291,6 @@ function F.serverHop()
         end)
     end)
 end
-local PFS=game:GetService("PathfindingService")
-local VU=game:GetService("VirtualUser")
 function F.stopAllActionsInternal()
     St.Fl.autoFarmRunning=false
     St.farmLoopId=St.farmLoopId+1
@@ -3506,7 +3331,7 @@ local function buildUI()
     TFix.Size=UDim2_new(1,0,0.5,0); TFix.Position=UDim2_new(0,0,0.5,0)
     TFix.BackgroundColor3=UI.C.PANEL; TFix.BackgroundTransparency=0.3; TFix.BorderSizePixel=0
     UI.registerTheme(TFix,"PANEL","BackgroundColor3")
-    local TitleLbl=Instance_new("TextLabel"); TitleLbl.Parent=MainFrame
+    local TitleLbl=Instance_new("TextLabel"); TitleLbl.Parent=TitleBar
     TitleLbl.Size=UDim2_new(1,0,1,0); TitleLbl.BackgroundTransparency=1
     TitleLbl.Text="JohnyX Script"
     TitleLbl.TextColor3=Color3_new(1,1,1)
@@ -5188,15 +5013,4 @@ local function init()
         end
     end)
 end
-local ok,err=xpcall(init,function(e)
-return tostring(e).."\n"..debug.traceback()
-end)
-if not ok then
-if _G.DebugLog then
-_G.DebugLog("=== FATAL CRASH ===")
-_G.DebugLog(err)
-_G.DebugLog("=== END CRASH ===")
-else
-warn("FATAL: "..err)
-end
-end
+init()
