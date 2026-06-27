@@ -67,12 +67,36 @@ btn.Font = Enum.Font.GothamBold
 btn.TextSize = 14
 btn.Parent = frame
 
-local function getTeam(p)
-    if not p or not p.Team then return "lobby" end
-    local t = p.Team.Name:lower()
+local function getTeam(player)
+    if player == LP then
+        local team = LP.Team
+        if not team then return "lobby" end
+        local t = team.Name:lower()
+        if t:find("survivor") or t:find("innocent") or t:find("hider") then return "survivor" end
+        if t:find("killer") then return "killer" end
+        return "lobby"
+    end
+    local team = player.Team
+    if not team then return "lobby" end
+    local t = team.Name:lower()
     if t:find("killer") then return "killer" end
     if t:find("survivor") or t:find("innocent") or t:find("hider") then return "survivor" end
     return "lobby"
+end
+
+local function isKiller(player)
+    if player == LP then return false end
+    local team = player.Team
+    if not team then return false end
+    local t = team.Name:lower()
+    if t == "killer" or t:find("^killer") then return true end
+    if t:find("survivor") or t:find("innocent") or t:find("lobby") or t:find("hider") then return false end
+    local myTeam = LP.Team
+    if myTeam then
+        local mt = myTeam.Name:lower()
+        if mt:find("survivor") or mt:find("innocent") or mt:find("hider") then return team ~= myTeam end
+    end
+    return false
 end
 
 local function isPlayerDowned(player)
@@ -106,6 +130,22 @@ local function getMap()
         end
     end
     return nil
+end
+
+local function getClosest(list, pos)
+    local closest = nil
+    local minDist = math.huge
+    local pos2D = Vector3.new(pos.X, 0, pos.Z)
+    for _, obj in ipairs(list) do
+        local objPos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetModelCFrame().Position) or obj.Position
+        local objPos2D = Vector3.new(objPos.X, 0, objPos.Z)
+        local d = (pos2D - objPos2D).Magnitude
+        if d < minDist then
+            minDist = d
+            closest = obj
+        end
+    end
+    return closest, minDist
 end
 
 local lootValueCache = setmetatable({}, {__mode="k"})
@@ -182,12 +222,13 @@ local function tryTriggerLoot(srcObj)
     end
 end
 
-local function getReadyExit()
+local function getOpenExits()
+    local exits = {}
     local map = getMap()
-    if not map then return nil end
-    local exitsFolder = map:FindFirstChild("Exits", true)
-    if exitsFolder then
-        for _, exitObj in ipairs(exitsFolder:GetChildren()) do
+    if not map then return exits end
+    local f = map:FindFirstChild("Exits", true)
+    if f then
+        for _, exitObj in ipairs(f:GetChildren()) do
             local hasTrigger = false
             for _, desc in ipairs(exitObj:GetDescendants()) do
                 if desc:IsA("TouchTransmitter") and desc.Parent and desc.Parent.Name == "Trigger" then
@@ -197,31 +238,22 @@ local function getReadyExit()
             end
             if hasTrigger then
                 local bouncer = exitObj:FindFirstChild("Bouncer", true)
-                local bouncerClear = (not bouncer or not bouncer:IsA("BasePart") or not bouncer.CanCollide)
-                if bouncerClear then return exitObj end
+                if not bouncer or not bouncer:IsA("BasePart") or not bouncer.CanCollide then
+                    local gatePart = exitObj.PrimaryPart
+                    if not gatePart then
+                        for _, p in ipairs(exitObj:GetDescendants()) do
+                            if p:IsA("BasePart") and p.Name ~= "Bouncer" then
+                                gatePart = p
+                                break
+                            end
+                        end
+                    end
+                    if gatePart then table.insert(exits, gatePart) end
+                end
             end
         end
     end
-    return nil
-end
-
-local function resolveGatePart(exitObj)
-    if exitObj:IsA("BasePart") then return exitObj end
-    if exitObj:IsA("Model") then
-        for _, name in ipairs({"Getawaygate", "GetawayGate", "getawaygate", "Gate", "Exit", "Door", "Escape"}) do
-            local found = exitObj:FindFirstChild(name, true)
-            if found and found:IsA("BasePart") then return found end
-        end
-        local biggest, biggestVol = nil, 0
-        for _, p in ipairs(exitObj:GetDescendants()) do
-            if p:IsA("BasePart") and p.Name ~= "Bouncer" then
-                local vol = p.Size.X * p.Size.Y * p.Size.Z
-                if vol > biggestVol then biggest = p; biggestVol = vol end
-            end
-        end
-        return biggest or exitObj.PrimaryPart
-    end
-    return nil
+    return exits
 end
 
 local _lockerCache = {models = {}, time = 0}
@@ -384,31 +416,51 @@ local function logicLobby(root, hum)
 end
 
 local function logicSurvivor(root, hum)
+    if isPlayerDowned(LP) then
+        State.IsHiding = false
+        State.TargetLocker = nil
+        local bestSurv, bestSurvDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, p in ipairs(Sv.Players:GetPlayers()) do
+            if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) then
+                local pr = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                if pr then
+                    local prPos2D = Vector3.new(pr.Position.X, 0, pr.Position.Z)
+                    local d = (rootPos2D - prPos2D).Magnitude
+                    if d < bestSurvDist then
+                        bestSurvDist = d
+                        bestSurv = pr
+                    end
+                end
+            end
+        end
+        if bestSurv then 
+            smartMove(bestSurv.Position, true) 
+        end
+        return
+    end
+
     local killer = nil
     local kDist = math.huge
     local downedSurv = {}
-    local upSurvs = {}
     
     for _, p in ipairs(Sv.Players:GetPlayers()) do
         if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
             local pr = p.Character.HumanoidRootPart
             local d = (root.Position - pr.Position).Magnitude
-            local t = getTeam(p)
-            if t == "killer" and d < kDist then
-                kDist = d
-                killer = pr
-            elseif t == "survivor" then
-                if isPlayerDowned(p) then
-                    table.insert(downedSurv, pr)
-                else
-                    table.insert(upSurvs, pr)
+            if isKiller(p) then
+                if d < kDist then
+                    kDist = d
+                    killer = pr
                 end
+            elseif getTeam(p) == "survivor" and isPlayerDowned(p) then
+                table.insert(downedSurv, pr)
             end
         end
     end
 
     if State.IsHiding then
-        if killer and kDist > 60 then
+        if killer and kDist > 65 then
             State.IsHiding = false
             State.TargetLocker = nil
             hum.Jump = true
@@ -419,62 +471,46 @@ local function logicSurvivor(root, hum)
         end
     end
 
-    if killer and kDist < 45 then
-        if kDist < 25 then
-            local lockers = getLockerModels()
-            local bestLocker, bestLockerDist = nil, math.huge
-            local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-            for _, cl in ipairs(lockers) do
-                local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-                local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
-                local d = (rootPos2D - clPos2D).Magnitude
-                if d < bestLockerDist then
-                    bestLockerDist = d
-                    bestLocker = cl
-                end
-            end
-            if bestLocker and bestLockerDist < 40 then
-                local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-                smartMove(targetPos, false)
-                if bestLockerDist < 6 then
-                    tryTriggerLoot(bestLocker)
-                    State.IsHiding = true
-                    State.TargetLocker = bestLocker
-                end
-                return
+    if killer and kDist < 50 then
+        local lockers = getLockerModels()
+        local bestLocker, bestLockerDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cl in ipairs(lockers) do
+            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
+            local d = (rootPos2D - clPos2D).Magnitude
+            if d < bestLockerDist then
+                bestLockerDist = d
+                bestLocker = cl
             end
         end
         
+        if bestLocker and bestLockerDist < 45 then
+            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
+            smartMove(targetPos, false)
+            if bestLockerDist < 6 then
+                hum:MoveTo(root.Position)
+                tryTriggerLoot(bestLocker)
+                State.IsHiding = true
+                State.TargetLocker = bestLocker
+            end
+            return
+        end
+        
         local dir = (root.Position - killer.Position).Unit
-        local escapePos = root.Position + (dir * 25)
+        local escapePos = root.Position + (dir * 30)
         smartMove(escapePos, false)
         return
     end
 
-    local readyExit = getReadyExit()
-    if readyExit then
-        local gatePart = resolveGatePart(readyExit)
-        if gatePart then
-            smartMove(gatePart.Position, false)
-            local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(gatePart.Position.X, 0, gatePart.Position.Z)).Magnitude
-            if d < 6 then tryTriggerLoot(readyExit) end
+    local openExits = getOpenExits()
+    if #openExits > 0 then
+        local ce, cd = getClosest(openExits, root.Position)
+        if ce then
+            smartMove(ce.Position, false)
+            if cd < 6 then tryTriggerLoot(ce.Parent) end
             return
         end
-    end
-
-    if isPlayerDowned(LP) then
-        local bestSurv, bestSurvDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, cs in ipairs(upSurvs) do
-            local csPos2D = Vector3.new(cs.Position.X, 0, cs.Position.Z)
-            local d = (rootPos2D - csPos2D).Magnitude
-            if d < bestSurvDist then
-                bestSurvDist = d
-                bestSurv = cs
-            end
-        end
-        if bestSurv then smartMove(bestSurv.Position, true) end
-        return
     end
 
     if #downedSurv > 0 then
