@@ -109,9 +109,11 @@ end
 local function getClosest(list, pos)
     local closest = nil
     local minDist = math.huge
+    local pos2D = Vector3.new(pos.X, 0, pos.Z)
     for _, obj in ipairs(list) do
         local objPos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetModelCFrame().Position) or obj.Position
-        local d = (pos - objPos).Magnitude
+        local objPos2D = Vector3.new(objPos.X, 0, objPos.Z)
+        local d = (pos2D - objPos2D).Magnitude
         if d < minDist then
             minDist = d
             closest = obj
@@ -131,6 +133,30 @@ local function interact(obj)
     end
 end
 
+local function getLoot()
+    local loot = {}
+    local map = getMap()
+    local searchRoot = map or workspace
+    local lf = searchRoot:FindFirstChild("LootSpawns", true)
+    if lf then
+        for _, obj in ipairs(lf:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector") then
+                local parent = obj.Parent
+                local target = nil
+                if parent:IsA("BasePart") then
+                    target = parent
+                elseif parent:IsA("Model") then
+                    target = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
+                end
+                if target and target.Transparency < 0.9 then
+                    table.insert(loot, target)
+                end
+            end
+        end
+    end
+    return loot
+end
+
 local function getOpenExits()
     local exits = {}
     local map = getMap()
@@ -148,22 +174,21 @@ local function getOpenExits()
             if hasTrigger then
                 local bouncer = exitObj:FindFirstChild("Bouncer", true)
                 if not bouncer or not bouncer:IsA("BasePart") or not bouncer.CanCollide then
-                    local gatePart = exitObj:FindFirstChildWhichIsA("BasePart", true)
+                    local gatePart = exitObj.PrimaryPart
+                    if not gatePart then
+                        for _, p in ipairs(exitObj:GetDescendants()) do
+                            if p:IsA("BasePart") and p.Name ~= "Bouncer" then
+                                gatePart = p
+                                break
+                            end
+                        end
+                    end
                     if gatePart then table.insert(exits, gatePart) end
                 end
             end
         end
     end
     return exits
-end
-
-local function checkLineOfSight(startPos, endPos, ignoreList)
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = ignoreList
-    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    local dir = (endPos - startPos)
-    local ray = workspace:Raycast(startPos, dir, rayParams)
-    return ray == nil
 end
 
 local function smartMove(targetPos, isMovingTarget)
@@ -173,7 +198,9 @@ local function smartMove(targetPos, isMovingTarget)
     if not root or not hum or hum.Health <= 0 then return false end
 
     local now = tick()
-    local distToTarget = (root.Position - targetPos).Magnitude
+    local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+    local targetPos2D = Vector3.new(targetPos.X, 0, targetPos.Z)
+    local distToTarget = (rootPos2D - targetPos2D).Magnitude
 
     if distToTarget < 3 then
         hum:MoveTo(root.Position)
@@ -196,8 +223,18 @@ local function smartMove(targetPos, isMovingTarget)
         PathData.LastPosTime = now
     end
 
-    local hasLOS = checkLineOfSight(root.Position, targetPos, {char})
-    if hasLOS and distToTarget < 40 then
+    local hasLOS = false
+    if distToTarget < 30 then
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = {char}
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        local ray = workspace:Raycast(root.Position, (targetPos - root.Position), rayParams)
+        if not ray or (ray.Instance and not ray.Instance.CanCollide) then
+            hasLOS = true
+        end
+    end
+
+    if hasLOS then
         hum:MoveTo(targetPos)
         PathData.Path = nil
         return false
@@ -206,16 +243,16 @@ local function smartMove(targetPos, isMovingTarget)
     local needsRecompute = false
     if not PathData.Path then needsRecompute = true end
     if isMovingTarget and now - PathData.LastCompute > 1 then needsRecompute = true end
-    if PathData.TargetPos and (PathData.TargetPos - targetPos).Magnitude > 6 then needsRecompute = true end
+    if PathData.TargetPos and (Vector3.new(PathData.TargetPos.X, 0, PathData.TargetPos.Z) - targetPos2D).Magnitude > 5 then needsRecompute = true end
 
     if needsRecompute then
         PathData.TargetPos = targetPos
         PathData.LastCompute = now
         PathData.Path = Sv.PathfindingService:CreatePath({
-            AgentRadius = 2.5,
+            AgentRadius = 2,
             AgentHeight = 5,
             AgentCanJump = true,
-            WaypointSpacing = 4
+            WaypointSpacing = 3
         })
         local s, e = pcall(function() PathData.Path:ComputeAsync(root.Position, targetPos) end)
         if s and PathData.Path.Status == Enum.PathStatus.Success then
@@ -229,16 +266,19 @@ local function smartMove(targetPos, isMovingTarget)
         end
     end
 
-    if PathData.Path and PathData.Waypoints[PathData.CurrentIndex] then
-        local wp = PathData.Waypoints[PathData.CurrentIndex]
-        hum:MoveTo(wp.Position)
-        if wp.Action == Enum.PathWaypointAction.Jump then
-            hum.Jump = true
-        end
-        local wpPos2D = Vector3.new(wp.Position.X, 0, wp.Position.Z)
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        if (rootPos2D - wpPos2D).Magnitude < 3.5 then
-            PathData.CurrentIndex = PathData.CurrentIndex + 1
+    if PathData.Path then
+        if PathData.Waypoints[PathData.CurrentIndex] then
+            local wp = PathData.Waypoints[PathData.CurrentIndex]
+            hum:MoveTo(wp.Position)
+            if wp.Action == Enum.PathWaypointAction.Jump then
+                hum.Jump = true
+            end
+            local wpPos2D = Vector3.new(wp.Position.X, 0, wp.Position.Z)
+            if (rootPos2D - wpPos2D).Magnitude < 3.5 then
+                PathData.CurrentIndex = PathData.CurrentIndex + 1
+            end
+        else
+            PathData.Path = nil
         end
     end
     return false
@@ -336,7 +376,7 @@ local function logicSurvivor(root, hum)
         local ce, cd = getClosest(openExits, root.Position)
         if ce then
             smartMove(ce.Position, false)
-            if cd < 6 then interact(ce) end
+            if cd < 6 then interact(ce.Parent) end
             return
         end
     end
@@ -351,7 +391,7 @@ local function logicSurvivor(root, hum)
         local cs, cd = getClosest(downedSurv, root.Position)
         if cs then
             smartMove(cs.Position, true)
-            if cd < 5 then
+            if cd < 6 then
                 hum:MoveTo(root.Position)
                 interact(cs.Parent)
             end
@@ -359,20 +399,7 @@ local function logicSurvivor(root, hum)
         end
     end
 
-    local loot = {}
-    local map = getMap()
-    local searchRoot = map or workspace
-    local lf = searchRoot:FindFirstChild("LootSpawns", true)
-    if lf then
-        for _, obj in ipairs(lf:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Transparency < 0.9 then
-                local p = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                local c = obj:FindFirstChildWhichIsA("ClickDetector", true)
-                if p or c then table.insert(loot, obj) end
-            end
-        end
-    end
-
+    local loot = getLoot()
     if #loot > 0 then
         local cl, cd = getClosest(loot, root.Position)
         if cl then
@@ -384,6 +411,8 @@ local function logicSurvivor(root, hum)
             return
         end
     end
+    
+    logicLobby(root, hum)
 end
 
 local function logicKiller(root, hum)
@@ -409,7 +438,7 @@ local function logicKiller(root, hum)
 
     if targetSurv then
         smartMove(targetSurv.Position, true)
-        if sDist < 10 and tool then
+        if sDist < 12 and tool then
             tool:Activate()
         end
         return
@@ -467,20 +496,22 @@ end)
 task.spawn(function()
     while task.wait(0.05) do
         if AutoSH_Enabled then
-            local char = LP.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            
-            if root and hum and hum.Health > 0 then
-                local team = getTeam(LP)
-                if team == "lobby" then
-                    logicLobby(root, hum)
-                elseif team == "survivor" then
-                    logicSurvivor(root, hum)
-                elseif team == "killer" then
-                    logicKiller(root, hum)
+            pcall(function()
+                local char = LP.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                
+                if root and hum and hum.Health > 0 then
+                    local team = getTeam(LP)
+                    if team == "lobby" then
+                        logicLobby(root, hum)
+                    elseif team == "survivor" then
+                        logicSurvivor(root, hum)
+                    elseif team == "killer" then
+                        logicKiller(root, hum)
+                    end
                 end
-            end
+            end)
         end
     end
 end)
