@@ -27,7 +27,8 @@ local State = {
     ActionDelay = 0,
     TargetLocker = nil,
     MapWanderTarget = nil,
-    CurrentTeam = ""
+    CurrentTeam = "",
+    LastAttack = 0
 }
 
 local LOBBY_COORDS = {
@@ -201,13 +202,23 @@ end
 local function getLoot()
     local loot = {}
     local map = getMap()
-    local lf = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
+    local searchRoot = map or workspace
+    local lf = searchRoot:FindFirstChild("LootSpawns", true)
     if lf then
         for _, obj in ipairs(lf:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Transparency < 0.9 then
-                local val = getLootValue(obj)
-                if val and val >= 1 and val ~= 20 then
-                    table.insert(loot, obj)
+            if obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector") then
+                local parent = obj.Parent
+                local target = nil
+                if parent:IsA("BasePart") then
+                    target = parent
+                elseif parent:IsA("Model") then
+                    target = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
+                end
+                if target and target.Transparency < 0.9 then
+                    local val = getLootValue(obj)
+                    if val and val >= 1 and val ~= 20 then
+                        table.insert(loot, target)
+                    end
                 end
             end
         end
@@ -291,6 +302,7 @@ local function checkLineOfSight(startPos, endPos, ignoreList)
     rayParams.FilterDescendantsInstances = ignoreList
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     local dir = (endPos - startPos)
+    if dir.Magnitude > 50 then return false end
     local ray = workspace:Raycast(startPos, dir, rayParams)
     return ray == nil
 end
@@ -308,6 +320,29 @@ local function getSafeNodes()
     return nodes
 end
 
+local function interactWithPrompt(obj)
+    if not obj then return end
+    for _, c in ipairs(obj:GetDescendants()) do
+        if c:IsA("ProximityPrompt") and c.Enabled then
+            pcall(function()
+                local oldLos = c.RequiresLineOfSight
+                local oldMax = c.MaxActivationDistance
+                c.RequiresLineOfSight = false
+                c.MaxActivationDistance = 9e9
+                fireproximityprompt(c)
+                task.delay(0.5, function()
+                    if c and c.Parent then
+                        c.RequiresLineOfSight = oldLos
+                        c.MaxActivationDistance = oldMax
+                    end
+                end)
+            end)
+        elseif c:IsA("ClickDetector") then
+            pcall(function() fireclickdetector(c, 0) end)
+        end
+    end
+end
+
 local function smartMove(targetPos, isMovingTarget, stopDistance)
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -318,7 +353,6 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
     local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
     local targetPos2D = Vector3.new(targetPos.X, 0, targetPos.Z)
     local distToTarget = (rootPos2D - targetPos2D).Magnitude
-    local isDowned = isPlayerDowned(LP)
 
     if distToTarget <= stopDistance then
         hum:MoveTo(root.Position)
@@ -326,13 +360,14 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
         return true
     end
 
-    if now - PathData.LastPosTime > 0.5 then
-        if (root.Position - PathData.LastPos).Magnitude < 1.5 then
+    if now - PathData.LastPosTime > 0.25 then
+        local distMoved = (root.Position - PathData.LastPos).Magnitude
+        if distMoved < 1.0 and hum.MoveDirection.Magnitude > 0 then
             PathData.StuckCount = PathData.StuckCount + 1
-            if PathData.StuckCount > 2 then
-                if not isDowned then hum.Jump = true end
-                local rightVec = root.CFrame.RightVector * (math.random() > 0.5 and 4 or -4)
-                hum:MoveTo(root.Position + rightVec)
+            if PathData.StuckCount > 3 then
+                hum.Jump = true
+                local escapeDir = (root.CFrame.RightVector * (math.random() > 0.5 and 6 or -6)) - (root.CFrame.LookVector * 4)
+                hum:MoveTo(root.Position + escapeDir)
                 PathData.Path = nil
                 PathData.StuckCount = 0
                 State.MapWanderTarget = nil
@@ -343,19 +378,21 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
         end
         PathData.LastPos = root.Position
         PathData.LastPosTime = now
-    end
 
-    local hasLOS = false
-    if distToTarget < 35 then
         local rayParams = RaycastParams.new()
         rayParams.FilterDescendantsInstances = {char}
         rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-        local ray = workspace:Raycast(root.Position, (targetPos - root.Position), rayParams)
-        if not ray or (ray.Instance and not ray.Instance.CanCollide) then
-            hasLOS = true
+        local lookDir = hum.MoveDirection * 3.5
+        if lookDir.Magnitude > 0 then
+            local kneeRay = workspace:Raycast(root.Position - Vector3.new(0, 1.5, 0), lookDir, rayParams)
+            local headRay = workspace:Raycast(root.Position + Vector3.new(0, 1, 0), lookDir, rayParams)
+            if kneeRay and not headRay then
+                hum.Jump = true
+            end
         end
     end
 
+    local hasLOS = checkLineOfSight(root.Position, targetPos, {char})
     if hasLOS then
         hum:MoveTo(targetPos)
         PathData.Path = nil
@@ -364,14 +401,14 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
 
     local needsRecompute = false
     if not PathData.Path then needsRecompute = true end
-    if isMovingTarget and now - PathData.LastCompute > 0.8 then needsRecompute = true end
-    if PathData.TargetPos and (Vector3.new(PathData.TargetPos.X, 0, PathData.TargetPos.Z) - targetPos2D).Magnitude > 5 then needsRecompute = true end
+    if isMovingTarget and now - PathData.LastCompute > 0.6 then needsRecompute = true end
+    if PathData.TargetPos and (Vector3.new(PathData.TargetPos.X, 0, PathData.TargetPos.Z) - targetPos2D).Magnitude > 4 then needsRecompute = true end
 
     if needsRecompute then
         PathData.TargetPos = targetPos
         PathData.LastCompute = now
         PathData.Path = Sv.PathfindingService:CreatePath({
-            AgentRadius = 2,
+            AgentRadius = 2.5,
             AgentHeight = 5,
             AgentCanJump = true,
             WaypointSpacing = 4
@@ -383,25 +420,31 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
         else
             PathData.Path = nil
             hum:MoveTo(targetPos)
-            if PathData.StuckCount > 0 and not isDowned then hum.Jump = true end
+            if PathData.StuckCount > 0 then hum.Jump = true end
             return false
         end
     end
 
-    if PathData.Path then
-        if PathData.Waypoints[PathData.CurrentIndex] then
-            local wp = PathData.Waypoints[PathData.CurrentIndex]
-            hum:MoveTo(wp.Position)
-            if wp.Action == Enum.PathWaypointAction.Jump and not isDowned then
-                hum.Jump = true
-            end
-            local wpPos2D = Vector3.new(wp.Position.X, 0, wp.Position.Z)
-            if (rootPos2D - wpPos2D).Magnitude < 4 then
+    if PathData.Path and PathData.Waypoints[PathData.CurrentIndex] then
+        if PathData.CurrentIndex < #PathData.Waypoints then
+            local nextWp = PathData.Waypoints[PathData.CurrentIndex + 1]
+            if checkLineOfSight(root.Position, nextWp.Position, {char}) then
                 PathData.CurrentIndex = PathData.CurrentIndex + 1
             end
-        else
-            PathData.Path = nil
         end
+
+        local wp = PathData.Waypoints[PathData.CurrentIndex]
+        hum:MoveTo(wp.Position)
+        if wp.Action == Enum.PathWaypointAction.Jump then
+            hum.Jump = true
+        end
+        
+        local wpPos2D = Vector3.new(wp.Position.X, 0, wp.Position.Z)
+        if (rootPos2D - wpPos2D).Magnitude < 4 then
+            PathData.CurrentIndex = PathData.CurrentIndex + 1
+        end
+    else
+        PathData.Path = nil
     end
     return false
 end
@@ -436,21 +479,6 @@ local function logicSurvivor(root, hum)
             end
         end
         
-        local upSurvs = {}
-        for _, p in ipairs(Sv.Players:GetPlayers()) do
-            if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                table.insert(upSurvs, p.Character.HumanoidRootPart)
-            end
-        end
-        
-        if #upSurvs > 0 then
-            local cs = getClosest(upSurvs, root.Position)
-            if cs then
-                smartMove(cs.Position, true, 2)
-                return
-            end
-        end
-        
         if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
             local nodes = getSafeNodes()
             if #nodes > 0 then
@@ -480,28 +508,38 @@ local function logicSurvivor(root, hum)
     end
 
     if State.IsHiding then
-        if killer and kDist > 65 then
+        if killer and kDist > 70 then
             State.IsHiding = false
             State.TargetLocker = nil
+            hum.Jump = true
         else
-            if State.TargetLocker then
-                local tPos = State.TargetLocker:IsA("Model") and (State.TargetLocker.PrimaryPart and State.TargetLocker.PrimaryPart.Position or State.TargetLocker:GetModelCFrame().Position) or State.TargetLocker.Position
-                smartMove(tPos, false, 0.5)
-            end
+            hum:MoveTo(root.Position)
+            if State.TargetLocker then interactWithPrompt(State.TargetLocker) end
             return
         end
     end
 
-    if killer and kDist < 50 then
+    if killer and kDist < 55 then
         local lockers = getLockerModels()
-        local cl, cd = getClosest(lockers, root.Position)
+        local bestLocker, bestLockerDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cl in ipairs(lockers) do
+            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
+            local d = (rootPos2D - clPos2D).Magnitude
+            if d < bestLockerDist then
+                bestLockerDist = d
+                bestLocker = cl
+            end
+        end
         
-        if cl and cd < 40 then
-            local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-            local reached = smartMove(targetPos, false, 0.5)
+        if bestLocker and bestLockerDist < 40 then
+            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
+            local reached = smartMove(targetPos, false, 1)
             if reached then
+                interactWithPrompt(bestLocker)
                 State.IsHiding = true
-                State.TargetLocker = cl
+                State.TargetLocker = bestLocker
             end
             return
         end
@@ -572,20 +610,47 @@ local function logicKiller(root, hum)
         end
     end
 
-    if targetSurv then
-        smartMove(targetSurv.Position, true, 1)
-        return
+    local tool = LP.Character:FindFirstChildOfClass("Tool")
+    if not tool then
+        local bp = LP.Backpack:FindFirstChildOfClass("Tool")
+        if bp then hum:EquipTool(bp) end
     end
 
     local now = tick()
-    if now - State.ActionDelay > 5 then
+
+    if targetSurv then
+        smartMove(targetSurv.Position, true, 3)
+        if sDist < 12 and tool then
+            if now - State.LastAttack > 0.6 then
+                tool:Activate()
+                State.LastAttack = now
+            end
+        end
+        return
+    end
+
+    if now - State.ActionDelay > 4 then
         local lockers = getLockerModels()
-        local cl = getClosest(lockers, root.Position)
-        if cl then
-            local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-            local reached = smartMove(targetPos, false, 1)
+        local bestLocker, bestLockerDist = nil, math.huge
+        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        for _, cl in ipairs(lockers) do
+            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
+            local d = (rootPos2D - clPos2D).Magnitude
+            if d < bestLockerDist then
+                bestLockerDist = d
+                bestLocker = cl
+            end
+        end
+        if bestLocker then
+            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
+            local reached = smartMove(targetPos, false, 3)
             if reached then
-                State.ActionDelay = now
+                if tool and now - State.LastAttack > 0.8 then
+                    tool:Activate()
+                    State.LastAttack = now
+                    State.ActionDelay = now
+                end
             end
             return
         end
