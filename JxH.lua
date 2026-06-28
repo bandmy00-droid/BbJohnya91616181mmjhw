@@ -198,6 +198,23 @@ local function getLootValue(obj)
     return cache(nil)
 end
 
+local function getLoot()
+    local loot = {}
+    local map = getMap()
+    local lf = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
+    if lf then
+        for _, obj in ipairs(lf:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Transparency < 0.9 then
+                local val = getLootValue(obj)
+                if val and val >= 1 and val ~= 20 then
+                    table.insert(loot, obj)
+                end
+            end
+        end
+    end
+    return loot
+end
+
 local function getOpenExits()
     local exits = {}
     local map = getMap()
@@ -278,6 +295,19 @@ local function checkLineOfSight(startPos, endPos, ignoreList)
     return ray == nil
 end
 
+local function getSafeNodes()
+    local nodes = {}
+    local map = getMap()
+    local searchRoot = map or workspace
+    local lf = searchRoot:FindFirstChild("LootSpawns", true)
+    if lf then
+        for _, v in ipairs(lf:GetDescendants()) do
+            if v:IsA("BasePart") then table.insert(nodes, v.Position) end
+        end
+    end
+    return nodes
+end
+
 local function smartMove(targetPos, isMovingTarget, stopDistance)
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -288,6 +318,7 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
     local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
     local targetPos2D = Vector3.new(targetPos.X, 0, targetPos.Z)
     local distToTarget = (rootPos2D - targetPos2D).Magnitude
+    local isDowned = isPlayerDowned(LP)
 
     if distToTarget <= stopDistance then
         hum:MoveTo(root.Position)
@@ -296,13 +327,16 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
     end
 
     if now - PathData.LastPosTime > 0.5 then
-        if (root.Position - PathData.LastPos).Magnitude < 1 then
+        if (root.Position - PathData.LastPos).Magnitude < 1.5 then
             PathData.StuckCount = PathData.StuckCount + 1
             if PathData.StuckCount > 2 then
-                hum.Jump = true
+                if not isDowned then hum.Jump = true end
+                local rightVec = root.CFrame.RightVector * (math.random() > 0.5 and 4 or -4)
+                hum:MoveTo(root.Position + rightVec)
                 PathData.Path = nil
                 PathData.StuckCount = 0
                 State.MapWanderTarget = nil
+                return false
             end
         else
             PathData.StuckCount = 0
@@ -312,7 +346,7 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
     end
 
     local hasLOS = false
-    if distToTarget < 30 then
+    if distToTarget < 35 then
         local rayParams = RaycastParams.new()
         rayParams.FilterDescendantsInstances = {char}
         rayParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -330,7 +364,7 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
 
     local needsRecompute = false
     if not PathData.Path then needsRecompute = true end
-    if isMovingTarget and now - PathData.LastCompute > 1 then needsRecompute = true end
+    if isMovingTarget and now - PathData.LastCompute > 0.8 then needsRecompute = true end
     if PathData.TargetPos and (Vector3.new(PathData.TargetPos.X, 0, PathData.TargetPos.Z) - targetPos2D).Magnitude > 5 then needsRecompute = true end
 
     if needsRecompute then
@@ -340,7 +374,7 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
             AgentRadius = 2,
             AgentHeight = 5,
             AgentCanJump = true,
-            WaypointSpacing = 3
+            WaypointSpacing = 4
         })
         local s, e = pcall(function() PathData.Path:ComputeAsync(root.Position, targetPos) end)
         if s and PathData.Path.Status == Enum.PathStatus.Success then
@@ -349,7 +383,7 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
         else
             PathData.Path = nil
             hum:MoveTo(targetPos)
-            if PathData.StuckCount > 0 then hum.Jump = true end
+            if PathData.StuckCount > 0 and not isDowned then hum.Jump = true end
             return false
         end
     end
@@ -358,11 +392,11 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
         if PathData.Waypoints[PathData.CurrentIndex] then
             local wp = PathData.Waypoints[PathData.CurrentIndex]
             hum:MoveTo(wp.Position)
-            if wp.Action == Enum.PathWaypointAction.Jump then
+            if wp.Action == Enum.PathWaypointAction.Jump and not isDowned then
                 hum.Jump = true
             end
             local wpPos2D = Vector3.new(wp.Position.X, 0, wp.Position.Z)
-            if (rootPos2D - wpPos2D).Magnitude < 3.5 then
+            if (rootPos2D - wpPos2D).Magnitude < 4 then
                 PathData.CurrentIndex = PathData.CurrentIndex + 1
             end
         else
@@ -372,35 +406,12 @@ local function smartMove(targetPos, isMovingTarget, stopDistance)
     return false
 end
 
-local function interactWithPrompt(obj)
-    if not obj then return end
-    for _, c in ipairs(obj:GetDescendants()) do
-        if c:IsA("ProximityPrompt") and c.Enabled then
-            pcall(function()
-                local oldLos = c.RequiresLineOfSight
-                local oldMax = c.MaxActivationDistance
-                c.RequiresLineOfSight = false
-                c.MaxActivationDistance = 9e9
-                fireproximityprompt(c)
-                task.delay(0.5, function()
-                    if c and c.Parent then
-                        c.RequiresLineOfSight = oldLos
-                        c.MaxActivationDistance = oldMax
-                    end
-                end)
-            end)
-        elseif c:IsA("ClickDetector") then
-            pcall(function() fireclickdetector(c, 0) end)
-        end
-    end
-end
-
 local function logicLobby(root, hum)
     if not State.LobbyTarget then
         State.LobbyTarget = LOBBY_COORDS[math.random(1, #LOBBY_COORDS)]
     end
     
-    local reached = smartMove(State.LobbyTarget, false, 1)
+    local reached = smartMove(State.LobbyTarget, false, 1.5)
     if reached then
         local now = tick()
         if now - State.LastJump > 20 then
@@ -416,49 +427,54 @@ local function logicSurvivor(root, hum)
     if isPlayerDowned(LP) then
         State.IsHiding = false
         State.TargetLocker = nil
+        
         if #openExits > 0 then
             local ce = getClosest(openExits, root.Position)
             if ce then
-                smartMove(ce.Position, false, 0.5)
+                smartMove(ce.Position, false, 1)
                 return
             end
         end
-        local bestSurv, bestSurvDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+        
+        local upSurvs = {}
         for _, p in ipairs(Sv.Players:GetPlayers()) do
-            if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) then
-                local pr = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                if pr then
-                    local prPos2D = Vector3.new(pr.Position.X, 0, pr.Position.Z)
-                    local d = (rootPos2D - prPos2D).Magnitude
-                    if d < bestSurvDist then
-                        bestSurvDist = d
-                        bestSurv = pr
-                    end
-                end
+            if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                table.insert(upSurvs, p.Character.HumanoidRootPart)
             end
         end
-        if bestSurv then 
-            smartMove(bestSurv.Position, true, 2) 
+        
+        if #upSurvs > 0 then
+            local cs = getClosest(upSurvs, root.Position)
+            if cs then
+                smartMove(cs.Position, true, 2)
+                return
+            end
+        end
+        
+        if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
+            local nodes = getSafeNodes()
+            if #nodes > 0 then
+                State.MapWanderTarget = nodes[math.random(1, #nodes)]
+            else
+                State.MapWanderTarget = root.Position + Vector3.new(math.random(-30, 30), 0, math.random(-30, 30))
+            end
+        end
+        if State.MapWanderTarget then
+            smartMove(State.MapWanderTarget, false, 2)
         end
         return
     end
 
     local killer = nil
     local kDist = math.huge
-    local downedSurv = {}
     
     for _, p in ipairs(Sv.Players:GetPlayers()) do
-        if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+        if isKiller(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
             local pr = p.Character.HumanoidRootPart
             local d = (root.Position - pr.Position).Magnitude
-            if isKiller(p) then
-                if d < kDist then
-                    kDist = d
-                    killer = pr
-                end
-            elseif getTeam(p) == "survivor" and isPlayerDowned(p) then
-                table.insert(downedSurv, pr)
+            if d < kDist then
+                kDist = d
+                killer = pr
             end
         end
     end
@@ -467,113 +483,69 @@ local function logicSurvivor(root, hum)
         if killer and kDist > 65 then
             State.IsHiding = false
             State.TargetLocker = nil
-            hum.Jump = true
         else
-            hum:MoveTo(root.Position)
-            if State.TargetLocker then interactWithPrompt(State.TargetLocker) end
+            if State.TargetLocker then
+                local tPos = State.TargetLocker:IsA("Model") and (State.TargetLocker.PrimaryPart and State.TargetLocker.PrimaryPart.Position or State.TargetLocker:GetModelCFrame().Position) or State.TargetLocker.Position
+                smartMove(tPos, false, 0.5)
+            end
             return
         end
     end
 
     if killer and kDist < 50 then
         local lockers = getLockerModels()
-        local bestLocker, bestLockerDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, cl in ipairs(lockers) do
-            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
-            local d = (rootPos2D - clPos2D).Magnitude
-            if d < bestLockerDist then
-                bestLockerDist = d
-                bestLocker = cl
-            end
-        end
+        local cl, cd = getClosest(lockers, root.Position)
         
-        if bestLocker and bestLockerDist < 45 then
-            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
+        if cl and cd < 40 then
+            local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
             local reached = smartMove(targetPos, false, 0.5)
             if reached then
-                interactWithPrompt(bestLocker)
                 State.IsHiding = true
-                State.TargetLocker = bestLocker
+                State.TargetLocker = cl
             end
             return
         end
         
-        local dir = (root.Position - killer.Position).Unit
-        local escapePos = root.Position + (dir * 30)
-        smartMove(escapePos, false, 2)
+        local nodes = getSafeNodes()
+        local bestEscapeNode = nil
+        local maxKDist = 0
+        for _, node in ipairs(nodes) do
+            local dToK = (node - killer.Position).Magnitude
+            if dToK > maxKDist then
+                maxKDist = dToK
+                bestEscapeNode = node
+            end
+        end
+        
+        if bestEscapeNode then
+            smartMove(bestEscapeNode, false, 2)
+        else
+            local dir = (root.Position - killer.Position).Unit
+            local escapePos = root.Position + (dir * 40)
+            smartMove(escapePos, false, 2)
+        end
         return
     end
 
     if #openExits > 0 then
         local ce = getClosest(openExits, root.Position)
         if ce then
-            smartMove(ce.Position, false, 0.5)
+            smartMove(ce.Position, false, 1)
             return
         end
     end
 
-    if #downedSurv > 0 then
-        local bestDowned, bestDownedDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, cs in ipairs(downedSurv) do
-            local csPos2D = Vector3.new(cs.Position.X, 0, cs.Position.Z)
-            local d = (rootPos2D - csPos2D).Magnitude
-            if d < bestDownedDist then
-                bestDownedDist = d
-                bestDowned = cs
-            end
-        end
-        if bestDowned then
-            local reached = smartMove(bestDowned.Position, true, 2)
-            if reached then
-                hum:MoveTo(root.Position)
-                interactWithPrompt(bestDowned.Parent)
-            end
-            return
-        end
-    end
-
-    local map = getMap()
-    local lootFolder = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
-    if lootFolder then
-        local bestTarget, minDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, obj in ipairs(lootFolder:GetDescendants()) do
-            if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
-                local target = nil
-                if obj:IsA("Model") or obj:IsA("Folder") then
-                    target = (obj:IsA("Model") and obj.PrimaryPart) or obj:FindFirstChildWhichIsA("BasePart", true)
-                elseif obj:IsA("BasePart") then
-                    target = obj
-                end
-                if target and target.Transparency < 0.9 then
-                    local val = getLootValue(obj)
-                    if val and val >= 1 and val ~= 20 then
-                        local targetPos2D = Vector3.new(target.Position.X, 0, target.Position.Z)
-                        local d = (rootPos2D - targetPos2D).Magnitude
-                        if d < minDist then
-                            minDist = d
-                            bestTarget = target
-                        end
-                    end
-                end
-            end
-        end
-        if bestTarget then
-            smartMove(bestTarget.Position, false, 0.5)
+    local loot = getLoot()
+    if #loot > 0 then
+        local cl = getClosest(loot, root.Position)
+        if cl then
+            smartMove(cl.Position, false, 1)
             return
         end
     end
     
     if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
-        local nodes = {}
-        if lootFolder then
-            for _, v in ipairs(lootFolder:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(nodes, v.Position) end
-            end
-        end
+        local nodes = getSafeNodes()
         if #nodes > 0 then
             State.MapWanderTarget = nodes[math.random(1, #nodes)]
         else
@@ -600,57 +572,27 @@ local function logicKiller(root, hum)
         end
     end
 
-    local tool = LP.Character:FindFirstChildOfClass("Tool")
-    if not tool then
-        local bp = LP.Backpack:FindFirstChildOfClass("Tool")
-        if bp then hum:EquipTool(bp) end
-    end
-
     if targetSurv then
-        smartMove(targetSurv.Position, true, 3)
-        if sDist < 12 and tool then
-            tool:Activate()
-        end
+        smartMove(targetSurv.Position, true, 1)
         return
     end
 
     local now = tick()
-    if now - State.ActionDelay > 3 then
-        State.ActionDelay = now
+    if now - State.ActionDelay > 5 then
         local lockers = getLockerModels()
-        local bestLocker, bestLockerDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, cl in ipairs(lockers) do
-            local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-            local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
-            local d = (rootPos2D - clPos2D).Magnitude
-            if d < bestLockerDist then
-                bestLockerDist = d
-                bestLocker = cl
-            end
-        end
-        if bestLocker then
-            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            local reached = smartMove(targetPos, false, 2)
+        local cl = getClosest(lockers, root.Position)
+        if cl then
+            local targetPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
+            local reached = smartMove(targetPos, false, 1)
             if reached then
-                interactWithPrompt(bestLocker)
-                if tool then tool:Activate() end
+                State.ActionDelay = now
             end
             return
         end
     end
 
     if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
-        local map = getMap()
-        local nodes = {}
-        if map then
-            local lf = map:FindFirstChild("LootSpawns", true)
-            if lf then
-                for _, v in ipairs(lf:GetDescendants()) do
-                    if v:IsA("BasePart") then table.insert(nodes, v.Position) end
-                end
-            end
-        end
+        local nodes = getSafeNodes()
         if #nodes > 0 then
             State.MapWanderTarget = nodes[math.random(1, #nodes)]
         else
