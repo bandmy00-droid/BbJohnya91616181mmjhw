@@ -26,7 +26,8 @@ local State = {
     LastJump = 0,
     ActionDelay = 0,
     TargetLocker = nil,
-    MapWanderTarget = nil
+    MapWanderTarget = nil,
+    CurrentTeam = ""
 }
 
 local LOBBY_COORDS = {
@@ -197,31 +198,6 @@ local function getLootValue(obj)
     return cache(nil)
 end
 
-local function tryTriggerLoot(srcObj)
-    if not srcObj then return end
-    local ok, descs = pcall(function() return srcObj:GetDescendants() end)
-    if not ok or not descs then return end
-    for _, child in ipairs(descs) do
-        if child:IsA("ProximityPrompt") and child.Enabled then
-            pcall(function()
-                local oldLos = child.RequiresLineOfSight
-                local oldMax = child.MaxActivationDistance
-                child.RequiresLineOfSight = false
-                child.MaxActivationDistance = 9e9
-                fireproximityprompt(child)
-                task.delay(0.5, function()
-                    if child and child.Parent then
-                        child.RequiresLineOfSight = oldLos
-                        child.MaxActivationDistance = oldMax
-                    end
-                end)
-            end)
-        elseif child:IsA("ClickDetector") then
-            pcall(function() fireclickdetector(child, 0) end)
-        end
-    end
-end
-
 local function getOpenExits()
     local exits = {}
     local map = getMap()
@@ -302,7 +278,7 @@ local function checkLineOfSight(startPos, endPos, ignoreList)
     return ray == nil
 end
 
-local function smartMove(targetPos, isMovingTarget)
+local function smartMove(targetPos, isMovingTarget, stopDistance)
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -313,7 +289,7 @@ local function smartMove(targetPos, isMovingTarget)
     local targetPos2D = Vector3.new(targetPos.X, 0, targetPos.Z)
     local distToTarget = (rootPos2D - targetPos2D).Magnitude
 
-    if distToTarget < 3 then
+    if distToTarget <= stopDistance then
         hum:MoveTo(root.Position)
         PathData.Path = nil
         return true
@@ -396,29 +372,57 @@ local function smartMove(targetPos, isMovingTarget)
     return false
 end
 
+local function interactWithPrompt(obj)
+    if not obj then return end
+    for _, c in ipairs(obj:GetDescendants()) do
+        if c:IsA("ProximityPrompt") and c.Enabled then
+            pcall(function()
+                local oldLos = c.RequiresLineOfSight
+                local oldMax = c.MaxActivationDistance
+                c.RequiresLineOfSight = false
+                c.MaxActivationDistance = 9e9
+                fireproximityprompt(c)
+                task.delay(0.5, function()
+                    if c and c.Parent then
+                        c.RequiresLineOfSight = oldLos
+                        c.MaxActivationDistance = oldMax
+                    end
+                end)
+            end)
+        elseif c:IsA("ClickDetector") then
+            pcall(function() fireclickdetector(c, 0) end)
+        end
+    end
+end
+
 local function logicLobby(root, hum)
     if not State.LobbyTarget then
         State.LobbyTarget = LOBBY_COORDS[math.random(1, #LOBBY_COORDS)]
     end
     
-    local reached = smartMove(State.LobbyTarget, false)
+    local reached = smartMove(State.LobbyTarget, false, 1)
     if reached then
         local now = tick()
-        if now - State.LastJump > 15 then
+        if now - State.LastJump > 20 then
             State.LastJump = now
             hum.Jump = true
-            task.delay(0.4, function() if math.random() > 0.5 then hum.Jump = true end end)
-        end
-        if math.random() > 0.98 then
-            State.LobbyTarget = LOBBY_COORDS[math.random(1, #LOBBY_COORDS)]
         end
     end
 end
 
 local function logicSurvivor(root, hum)
+    local openExits = getOpenExits()
+    
     if isPlayerDowned(LP) then
         State.IsHiding = false
         State.TargetLocker = nil
+        if #openExits > 0 then
+            local ce = getClosest(openExits, root.Position)
+            if ce then
+                smartMove(ce.Position, false, 0.5)
+                return
+            end
+        end
         local bestSurv, bestSurvDist = nil, math.huge
         local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
         for _, p in ipairs(Sv.Players:GetPlayers()) do
@@ -435,7 +439,7 @@ local function logicSurvivor(root, hum)
             end
         end
         if bestSurv then 
-            smartMove(bestSurv.Position, true) 
+            smartMove(bestSurv.Position, true, 2) 
         end
         return
     end
@@ -466,7 +470,7 @@ local function logicSurvivor(root, hum)
             hum.Jump = true
         else
             hum:MoveTo(root.Position)
-            if State.TargetLocker then tryTriggerLoot(State.TargetLocker) end
+            if State.TargetLocker then interactWithPrompt(State.TargetLocker) end
             return
         end
     end
@@ -487,10 +491,9 @@ local function logicSurvivor(root, hum)
         
         if bestLocker and bestLockerDist < 45 then
             local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            smartMove(targetPos, false)
-            if bestLockerDist < 6 then
-                hum:MoveTo(root.Position)
-                tryTriggerLoot(bestLocker)
+            local reached = smartMove(targetPos, false, 0.5)
+            if reached then
+                interactWithPrompt(bestLocker)
                 State.IsHiding = true
                 State.TargetLocker = bestLocker
             end
@@ -499,16 +502,14 @@ local function logicSurvivor(root, hum)
         
         local dir = (root.Position - killer.Position).Unit
         local escapePos = root.Position + (dir * 30)
-        smartMove(escapePos, false)
+        smartMove(escapePos, false, 2)
         return
     end
 
-    local openExits = getOpenExits()
     if #openExits > 0 then
-        local ce, cd = getClosest(openExits, root.Position)
+        local ce = getClosest(openExits, root.Position)
         if ce then
-            smartMove(ce.Position, false)
-            if cd < 6 then tryTriggerLoot(ce.Parent) end
+            smartMove(ce.Position, false, 0.5)
             return
         end
     end
@@ -525,10 +526,10 @@ local function logicSurvivor(root, hum)
             end
         end
         if bestDowned then
-            smartMove(bestDowned.Position, true)
-            if bestDownedDist < 6 then
+            local reached = smartMove(bestDowned.Position, true, 2)
+            if reached then
                 hum:MoveTo(root.Position)
-                tryTriggerLoot(bestDowned.Parent)
+                interactWithPrompt(bestDowned.Parent)
             end
             return
         end
@@ -537,7 +538,7 @@ local function logicSurvivor(root, hum)
     local map = getMap()
     local lootFolder = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
     if lootFolder then
-        local bestTarget, bestSrc, minDist = nil, nil, math.huge
+        local bestTarget, minDist = nil, math.huge
         local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
         for _, obj in ipairs(lootFolder:GetDescendants()) do
             if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Folder") then
@@ -555,18 +556,13 @@ local function logicSurvivor(root, hum)
                         if d < minDist then
                             minDist = d
                             bestTarget = target
-                            bestSrc = obj
                         end
                     end
                 end
             end
         end
         if bestTarget then
-            smartMove(bestTarget.Position, false)
-            if minDist < 6 then
-                hum:MoveTo(root.Position)
-                tryTriggerLoot(bestSrc)
-            end
+            smartMove(bestTarget.Position, false, 0.5)
             return
         end
     end
@@ -585,7 +581,7 @@ local function logicSurvivor(root, hum)
         end
     end
     if State.MapWanderTarget then
-        smartMove(State.MapWanderTarget, false)
+        smartMove(State.MapWanderTarget, false, 2)
     end
 end
 
@@ -611,7 +607,7 @@ local function logicKiller(root, hum)
     end
 
     if targetSurv then
-        smartMove(targetSurv.Position, true)
+        smartMove(targetSurv.Position, true, 3)
         if sDist < 12 and tool then
             tool:Activate()
         end
@@ -635,9 +631,9 @@ local function logicKiller(root, hum)
         end
         if bestLocker then
             local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            smartMove(targetPos, false)
-            if bestLockerDist < 7 then
-                tryTriggerLoot(bestLocker)
+            local reached = smartMove(targetPos, false, 2)
+            if reached then
+                interactWithPrompt(bestLocker)
                 if tool then tool:Activate() end
             end
             return
@@ -662,7 +658,7 @@ local function logicKiller(root, hum)
         end
     end
     if State.MapWanderTarget then
-        smartMove(State.MapWanderTarget, false)
+        smartMove(State.MapWanderTarget, false, 2)
     end
 end
 
@@ -676,6 +672,7 @@ btn.MouseButton1Click:Connect(function()
         State.IsHiding = false
         State.TargetLocker = nil
         State.MapWanderTarget = nil
+        State.CurrentTeam = getTeam(LP)
         PathData.Path = nil
     else
         btn.Text = "Auto SH: OFF"
@@ -698,6 +695,15 @@ task.spawn(function()
                 
                 if root and hum and hum.Health > 0 then
                     local team = getTeam(LP)
+                    if team ~= State.CurrentTeam then
+                        State.CurrentTeam = team
+                        State.LobbyTarget = nil
+                        State.IsHiding = false
+                        State.TargetLocker = nil
+                        State.MapWanderTarget = nil
+                        PathData.Path = nil
+                    end
+                    
                     if team == "lobby" then
                         logicLobby(root, hum)
                     elseif team == "survivor" then
