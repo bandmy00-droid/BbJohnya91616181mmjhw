@@ -2,7 +2,8 @@ local Sv = {
     Players = game:GetService("Players"),
     PathfindingService = game:GetService("PathfindingService"),
     CoreGui = game:GetService("CoreGui"),
-    Workspace = game:GetService("Workspace")
+    Workspace = game:GetService("Workspace"),
+    RunService = game:GetService("RunService")
 }
 
 local LP = Sv.Players.LocalPlayer
@@ -10,16 +11,16 @@ local AutoSH_Enabled = false
 
 local CONFIG = {
     STOP_DISTANCE = 2.5,
-    WAYPOINT_SPACING = 3,
-    AGENT_RADIUS = 2,
+    WAYPOINT_SPACING = 2,
+    AGENT_RADIUS = 2.5,
     AGENT_HEIGHT = 5,
     JUMP_COOLDOWN = 0.3,
-    STUCK_THRESHOLD = 0.8,
-    STUCK_RESET_TIME = 0.4,
+    STUCK_THRESHOLD = 0.5,
+    STUCK_RESET_TIME = 0.3,
     MAX_STUCK_COUNT = 2,
-    PATH_RECOMPUTE_TIME = 1,
-    PATH_TIMEOUT = 8,
-    WALL_AVOIDANCE_DIST = 6,
+    PATH_RECOMPUTE_TIME = 0.8,
+    PATH_TIMEOUT = 6,
+    WALL_AVOIDANCE_DIST = 8,
     KILLER_DETECT_RANGE = 80,
     KILLER_FLEE_START = 50,
     KILLER_CAUTION = 40,
@@ -35,7 +36,14 @@ local CONFIG = {
     ATTACK_COOLDOWN = 0.6,
     LOCKER_CHECK_COOLDOWN = 5,
     UPDATE_RATE = 0.08,
-    CACHE_DURATION = 3
+    CACHE_DURATION = 3,
+    WALL_CHECK_DIST = 4,
+    WALL_AVOID_ANGLE = 45,
+    PATH_SMOOTHING = true,
+    MIN_MOVE_DIST = 0.3,
+    STUCK_JUMP_COOLDOWN = 1.5,
+    KILLER_CHASE_SPEED = 20,
+    KILLER_WANDER_SPEED = 16
 }
 
 local PathData = {
@@ -50,7 +58,9 @@ local PathData = {
     LastStuckTime = 0,
     CurrentMoveTarget = nil,
     PathBlockedConn = nil,
-    PathTimeout = 0
+    PathTimeout = 0,
+    LastPathComputePos = nil,
+    PathComputeCooldown = 0
 }
 
 local State = {
@@ -65,7 +75,10 @@ local State = {
     LastWanderTime = 0,
     IsStuck = false,
     LastDirChange = 0,
-    AvoidanceDir = nil
+    AvoidanceDir = nil,
+    LastStuckJump = 0,
+    ConsecutiveStuck = 0,
+    LastTargetPos = nil
 }
 
 local KillerData = {
@@ -167,25 +180,65 @@ local function isKiller(player)
     return false
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 1: دالة isPlayerDowned المحسّنة
+-- ═══════════════════════════════════════════════════════════════
 local function isPlayerDowned(player)
     if not player then return false end
     local char = player.Character
     if not char then return false end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
+    -- اللاعب ميت تماماً
     if hum.Health <= 0 and hum.MaxHealth > 0 then return false end
+    -- اللاعب محمي (ForceField)
     if char:FindFirstChildOfClass("ForceField") then return false end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return false end
+
+    -- التحقق من BleedOutHealth (الطريقة الأكثر شيوعاً)
     local boh = root:FindFirstChild("BleedOutHealth")
-    if boh and boh:IsA("BoolValue") and boh.Value then return true end
-    if boh and boh:IsA("NumberValue") and boh.Value > 0 then return true end
+    if boh then
+        if boh:IsA("BoolValue") and boh.Value == true then return true end
+        if boh:IsA("NumberValue") and boh.Value > 0 then return true end
+        if boh:IsA("IntValue") and boh.Value > 0 then return true end
+        -- بعض الألعاب تستخدم Enabled بدلاً من Value
+        if boh:IsA("BoolValue") and boh.Enabled == true then return true end
+    end
+
+    -- التحقق من Downed
     local dv = char:FindFirstChild("Downed")
-    if dv and ((dv:IsA("BoolValue") and dv.Value) or (dv:IsA("IntValue") and dv.Value > 0)) then return true end
+    if dv then
+        if dv:IsA("BoolValue") and dv.Value == true then return true end
+        if dv:IsA("IntValue") and dv.Value > 0 then return true end
+        if dv:IsA("NumberValue") and dv.Value > 0 then return true end
+    end
+
+    -- التحقق من Incapacitated
     local inc = char:FindFirstChild("Incapacitated")
-    if inc and ((inc:IsA("BoolValue") and inc.Value) or (inc:IsA("IntValue") and inc.Value > 0)) then return true end
+    if inc then
+        if inc:IsA("BoolValue") and inc.Value == true then return true end
+        if inc:IsA("IntValue") and inc.Value > 0 then return true end
+        if inc:IsA("NumberValue") and inc.Value > 0 then return true end
+    end
+
+    -- التحقق من Ragdolled
+    local rag = char:FindFirstChild("Ragdolled")
+    if rag then
+        if rag:IsA("BoolValue") and rag.Value == true then return true end
+    end
+
+    -- التحقق من حالة Humanoid
     local state = hum:GetState()
-    if (state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.Ragdoll) and hum.WalkSpeed < 5 then return true end
+    if (state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.Ragdoll or state == Enum.HumanoidStateType.GettingUp) and hum.WalkSpeed < 5 then
+        return true
+    end
+
+    -- التحقق من السرعة المنخفضة جداً مع وجود صحة
+    if hum.WalkSpeed < 3 and hum.Health > 0 and hum.Health < hum.MaxHealth then
+        return true
+    end
+
     return false
 end
 
@@ -289,6 +342,9 @@ local function getLootValue(obj)
     return cache(nil)
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 4: جلب الـ Loot بالترتيب حسب الأقرب (بدلاً من الأعلى قيمة)
+-- ═══════════════════════════════════════════════════════════════
 local function getSafeLoot(killerPos, rootPos)
     local lootList = {}
     local map = getCachedMap()
@@ -346,11 +402,9 @@ local function getSafeLoot(killerPos, rootPos)
             end
         end
     end
+    -- ترتيب حسب الأقرب أولاً (بدلاً من الأعلى قيمة)
     table.sort(lootList, function(a, b)
-        if a.value == b.value then
-            return a.distance < b.distance
-        end
-        return a.value > b.value
+        return a.distance < b.distance
     end)
     return lootList
 end
@@ -565,16 +619,22 @@ local function handleTraps(char, hum)
     end
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 4: تحسين تجنب الجدران بشكل ذكي جداً
+-- ═══════════════════════════════════════════════════════════════
 local function getWallAvoidanceDirection(root, targetPos)
     local char = LP.Character
     if not char then return nil end
     local rootPos = root.Position
     local forward = (targetPos - rootPos).Unit
     if forward.Magnitude < 0.1 then forward = root.CFrame.LookVector end
+
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {char}
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     rayParams.IgnoreWater = true
+
+    -- فحص الاتجاه الأمامي
     local forwardRay = Sv.Workspace:Raycast(rootPos, forward * CONFIG.WALL_AVOIDANCE_DIST, rayParams)
     if not forwardRay then return nil end
     if forwardRay.Instance then
@@ -582,39 +642,47 @@ local function getWallAvoidanceDirection(root, targetPos)
             return nil
         end
         local wallHeight = forwardRay.Instance.Size and forwardRay.Instance.Size.Y or 10
-        if wallHeight > CONFIG.AGENT_HEIGHT * 0.8 then
-            local right = Vector3.new(-forward.Z, 0, forward.X).Unit
-            local left = -right
-            local rightRay = Sv.Workspace:Raycast(rootPos, right * CONFIG.WALL_AVOIDANCE_DIST, rayParams)
-            local leftRay = Sv.Workspace:Raycast(rootPos, left * CONFIG.WALL_AVOIDANCE_DIST, rayParams)
-            local rightDist = rightRay and (rightRay.Position - rootPos).Magnitude or CONFIG.WALL_AVOIDANCE_DIST
-            local leftDist = leftRay and (leftRay.Position - rootPos).Magnitude or CONFIG.WALL_AVOIDANCE_DIST
-            local diagRight = (forward + right * 0.5).Unit
-            local diagLeft = (forward + left * 0.5).Unit
-            local diagRightRay = Sv.Workspace:Raycast(rootPos, diagRight * CONFIG.WALL_AVOIDANCE_DIST, rayParams)
-            local diagLeftRay = Sv.Workspace:Raycast(rootPos, diagLeft * CONFIG.WALL_AVOIDANCE_DIST, rayParams)
-            local diagRightDist = diagRightRay and (diagRightRay.Position - rootPos).Magnitude or CONFIG.WALL_AVOIDANCE_DIST
-            local diagLeftDist = diagLeftRay and (diagLeftRay.Position - rootPos).Magnitude or CONFIG.WALL_AVOIDANCE_DIST
+        if wallHeight > CONFIG.AGENT_HEIGHT * 0.6 then
+            -- فحص زوايا متعددة للعثور على أفضل اتجاه
             local bestDir = nil
-            local bestDist = 0
-            local dirs = {
-                {dir = right, dist = rightDist},
-                {dir = left, dist = leftDist},
-                {dir = diagRight, dist = diagRightDist},
-                {dir = diagLeft, dist = diagLeftDist}
-            }
-            for _, d in ipairs(dirs) do
-                if d.dist > bestDist then
-                    bestDist = d.dist
-                    bestDir = d.dir
+            local bestScore = -math.huge
+            local angles = {-90, -75, -60, -45, -30, -15, 15, 30, 45, 60, 75, 90}
+
+            for _, angle in ipairs(angles) do
+                local rad = math.rad(angle)
+                local dir = Vector3.new(
+                    forward.X * math.cos(rad) - forward.Z * math.sin(rad),
+                    0,
+                    forward.X * math.sin(rad) + forward.Z * math.cos(rad)
+                ).Unit
+
+                local testPos = rootPos + (dir * CONFIG.WALL_AVOIDANCE_DIST)
+                local ray = Sv.Workspace:Raycast(rootPos, (testPos - rootPos), rayParams)
+                local clearDist = CONFIG.WALL_AVOIDANCE_DIST
+                if ray and ray.Instance and ray.Instance.CanCollide then
+                    clearDist = (ray.Position - rootPos).Magnitude * 0.8
+                end
+
+                -- حساب النتيجة: المسافة الصافية + قرب الاتجاه من الهدف
+                local toTarget = (targetPos - rootPos).Unit
+                local alignment = dir:Dot(toTarget)
+                local score = clearDist + alignment * 5
+
+                if score > bestScore then
+                    bestScore = score
+                    bestDir = dir
                 end
             end
+
             return bestDir
         end
     end
     return nil
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 4: تحسين كشف الالتصاق (Stuck Detection)
+-- ═══════════════════════════════════════════════════════════════
 local function checkStuck(root)
     local now = tick()
     if now - PathData.LastPosTime < CONFIG.STUCK_RESET_TIME then return false end
@@ -625,26 +693,33 @@ local function checkStuck(root)
             PathData.StuckCount = 0
             PathData.LastPos = root.Position
             PathData.LastPosTime = now
+            State.ConsecutiveStuck = State.ConsecutiveStuck + 1
             return true
         end
     else
         PathData.StuckCount = 0
+        State.ConsecutiveStuck = 0
     end
     PathData.LastPos = root.Position
     PathData.LastPosTime = now
     return false
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 4: تحسين smartMove لمنع الالتصاق بالجدران
+-- ═══════════════════════════════════════════════════════════════
 local function smartMove(targetPos, stopDistance, avoidPos)
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum or hum.Health <= 0 then return false end
+
     local now = tick()
     local rootPos = root.Position
     local rootPos2D = Vector3.new(rootPos.X, 0, rootPos.Z)
     local targetPos2D = Vector3.new(targetPos.X, 0, targetPos.Z)
     local distToTarget = (rootPos2D - targetPos2D).Magnitude
+
     if distToTarget <= stopDistance then
         if PathData.CurrentMoveTarget then
             hum:MoveTo(rootPos)
@@ -657,6 +732,8 @@ local function smartMove(targetPos, stopDistance, avoidPos)
         end
         return true
     end
+
+    -- تجنب القاتل
     if avoidPos then
         local distNow = (rootPos - avoidPos).Magnitude
         local distTarget = (targetPos - avoidPos).Magnitude
@@ -672,6 +749,8 @@ local function smartMove(targetPos, stopDistance, avoidPos)
             end
         end
     end
+
+    -- كشف الالتصاق المحسّن
     if checkStuck(root) then
         State.IsStuck = true
         PathData.Path = nil
@@ -680,51 +759,85 @@ local function smartMove(targetPos, stopDistance, avoidPos)
             PathData.PathBlockedConn:Disconnect()
             PathData.PathBlockedConn = nil
         end
-        hum.Jump = true
-        local randomAngle = math.random() * 2 * math.pi
-        local randomDir = Vector3.new(math.cos(randomAngle), 0, math.sin(randomAngle))
-        local escapePos = rootPos + (randomDir * 15)
-        hum:MoveTo(escapePos)
-        PathData.LastStuckTime = now
+
+        -- قفزة ذكية لتجاوز العائق
+        if now - State.LastStuckJump > CONFIG.STUCK_JUMP_COOLDOWN then
+            State.LastStuckJump = now
+            hum.Jump = true
+        end
+
+        -- اتجاه هروب عشوائي ذكي (بعيداً عن الجدران)
+        local escapeAngles = {0, 45, -45, 90, -90, 135, -135, 180}
+        local bestEscape = nil
+        local bestEscapeDist = 0
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = {char}
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+        for _, angle in ipairs(escapeAngles) do
+            local rad = math.rad(angle)
+            local dir = Vector3.new(math.cos(rad), 0, math.sin(rad))
+            local testRay = Sv.Workspace:Raycast(rootPos, dir * 15, rayParams)
+            local clearDist = 15
+            if testRay and testRay.Instance and testRay.Instance.CanCollide then
+                clearDist = (testRay.Position - rootPos).Magnitude * 0.7
+            end
+            if clearDist > bestEscapeDist then
+                bestEscapeDist = clearDist
+                bestEscape = rootPos + (dir * math.min(clearDist, 12))
+            end
+        end
+
+        if bestEscape then
+            hum:MoveTo(bestEscape)
+            PathData.LastStuckTime = now
+        end
         return false
     else
         State.IsStuck = false
     end
+
+    -- تجنب الجدران بشكل استباقي
     local avoidanceDir = getWallAvoidanceDirection(root, targetPos)
     if avoidanceDir then
         State.AvoidanceDir = avoidanceDir
         State.LastDirChange = now
         local targetDir = (targetPos - rootPos).Unit
-        local blendedDir = (targetDir + avoidanceDir * 1.5).Unit
-        local avoidPos2 = rootPos + (blendedDir * math.min(distToTarget, 20))
+        local blendedDir = (targetDir + avoidanceDir * 2).Unit
+        local avoidPos2 = rootPos + (blendedDir * math.min(distToTarget, 15))
         PathData.Path = nil
         PathData.CurrentMoveTarget = avoidPos2
         hum:MoveTo(avoidPos2)
+
+        -- قفزة ذكية فوق العوائق الصغيرة
         if now - State.LastJump > CONFIG.JUMP_COOLDOWN then
             local closeRayParams = RaycastParams.new()
             closeRayParams.FilterDescendantsInstances = {char}
             closeRayParams.FilterType = Enum.RaycastFilterType.Blacklist
             local closeRay = Sv.Workspace:Raycast(rootPos, (targetPos - rootPos).Unit * 3, closeRayParams)
-            if closeRay and closeRay.Instance and closeRay.Instance.CanCollide then
+            if closeRay and closeRay.Instance and closeRay.Instance.CanCollide and closeRay.Instance.Size.Y < CONFIG.AGENT_HEIGHT * 0.5 then
                 State.LastJump = now
                 hum.Jump = true
             end
         end
         return false
-    elseif State.AvoidanceDir and (now - State.LastDirChange < 0.5) then
+    elseif State.AvoidanceDir and (now - State.LastDirChange < 0.6) then
         local targetDir = (targetPos - rootPos).Unit
         local blendedDir = (targetDir + State.AvoidanceDir).Unit
-        local avoidPos2 = rootPos + (blendedDir * math.min(distToTarget, 15))
+        local avoidPos2 = rootPos + (blendedDir * math.min(distToTarget, 12))
         PathData.CurrentMoveTarget = avoidPos2
         hum:MoveTo(avoidPos2)
         return false
     else
         State.AvoidanceDir = nil
     end
+
+    -- التحقق من خط الرؤية المباشر
     local hasLOS = false
-    if distToTarget < 50 then
+    if distToTarget < 60 then
         hasLOS = checkLineOfSight(rootPos, targetPos, {char})
     end
+
     if hasLOS then
         PathData.Path = nil
         if PathData.PathBlockedConn then
@@ -737,19 +850,32 @@ local function smartMove(targetPos, stopDistance, avoidPos)
         end
         return false
     end
+
+    -- إعادة حساب المسار
     local needsRecompute = false
     if not PathData.Path then needsRecompute = true end
     if PathData.TargetPos and (Vector3.new(PathData.TargetPos.X, 0, PathData.TargetPos.Z) - targetPos2D).Magnitude > 3 then needsRecompute = true end
     if now - PathData.LastCompute > CONFIG.PATH_RECOMPUTE_TIME then needsRecompute = true end
     if now - PathData.PathTimeout > CONFIG.PATH_TIMEOUT then needsRecompute = true end
+
+    -- منع إعادة الحساب المتكررة في نفس المكان
+    if PathData.LastPathComputePos and (rootPos - PathData.LastPathComputePos).Magnitude < 2 and (now - PathData.PathComputeCooldown < 1) then
+        needsRecompute = false
+    end
+
     if needsRecompute then
         PathData.TargetPos = targetPos
         PathData.LastCompute = now
         PathData.PathTimeout = now
+        PathData.LastPathComputePos = rootPos
+        PathData.PathComputeCooldown = now
         if PathData.PathBlockedConn then
             PathData.PathBlockedConn:Disconnect()
             PathData.PathBlockedConn = nil
         end
+
+        -- حساب المسار من موقع الأقدام (إصلاح الالتصاق)
+        local computeStart = rootPos - Vector3.new(0, root.Size.Y * 0.3, 0)
         local path = Sv.PathfindingService:CreatePath({
             AgentRadius = CONFIG.AGENT_RADIUS,
             AgentHeight = CONFIG.AGENT_HEIGHT,
@@ -761,7 +887,7 @@ local function smartMove(targetPos, stopDistance, avoidPos)
                 Danger = math.huge
             }
         })
-        local success, err = pcall(function() path:ComputeAsync(rootPos, targetPos) end)
+        local success, err = pcall(function() path:ComputeAsync(computeStart, targetPos) end)
         if success and path.Status == Enum.PathStatus.Success then
             PathData.Waypoints = path:GetWaypoints()
             PathData.CurrentIndex = 2
@@ -781,6 +907,8 @@ local function smartMove(targetPos, stopDistance, avoidPos)
             return false
         end
     end
+
+    -- متابعة النقاط
     if PathData.Path and PathData.Waypoints[PathData.CurrentIndex] then
         local wp = PathData.Waypoints[PathData.CurrentIndex]
         if not PathData.CurrentMoveTarget or (PathData.CurrentMoveTarget - wp.Position).Magnitude > 1 then
@@ -947,31 +1075,46 @@ local function doFlee(root, hum, killerPos, level)
     return false
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 3: تحسين منطق Lobby
+-- ═══════════════════════════════════════════════════════════════
 local function logicLobby(root, hum)
     setStatus("Lobby")
+    local now = tick()
+
+    -- اختيار إحداثية عشوائية والذهاب إليها
     if not State.LobbyTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.LobbyTarget.X, 0, State.LobbyTarget.Z)).Magnitude < 3 then
         State.LobbyTarget = LOBBY_COORDS[math.random(1, #LOBBY_COORDS)]
     end
+
     local reached = smartMove(State.LobbyTarget, 2)
     if reached then
-        local now = tick()
-        if now - State.LastJump > 15 then
+        -- الوقوف في المكان والقفز كل 20 ثانية فقط
+        if now - State.LastJump > 20 then
             State.LastJump = now
             hum.Jump = true
         end
+        -- اختيار إحداثية جديدة
         State.LobbyTarget = LOBBY_COORDS[math.random(1, #LOBBY_COORDS)]
     end
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 4: تحسين منطق Survivor
+-- ═══════════════════════════════════════════════════════════════
 local function logicSurvivor(root, hum)
     local now = tick()
     local killer, kDist, killerPos, killerRoot = updateKillerData(root)
     local fleeLevel = getFleeLevel(kDist)
+
+    -- إذا كان اللاعب ساقطاً
     if isPlayerDowned(LP) then
         setStatus("Downed")
         State.IsHiding = false
         State.TargetLocker = nil
         CurrentLootData = nil
+
+        -- الذهاب لأقرب مخرج آمن
         local openExits = getOpenExits()
         local bestExit = nil
         local bestExitDist = math.huge
@@ -988,6 +1131,8 @@ local function logicSurvivor(root, hum)
             smartMove(bestExit.Position, 1, killerPos)
             return
         end
+
+        -- الذهاب لأقرب لاعب حي
         local upSurvs = {}
         for _, p in ipairs(Sv.Players:GetPlayers()) do
             if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -1001,6 +1146,8 @@ local function logicSurvivor(root, hum)
                 return
             end
         end
+
+        -- التجوال العشوائي
         if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 then
             local nodes = getSafeNodes()
             if #nodes > 0 then
@@ -1014,6 +1161,8 @@ local function logicSurvivor(root, hum)
         end
         return
     end
+
+    -- إذا كان مختبئاً
     if State.IsHiding then
         if fleeLevel == 0 then
             setStatus("Safe")
@@ -1030,10 +1179,14 @@ local function logicSurvivor(root, hum)
             return
         end
     end
+
+    -- الهروب من القاتل
     if fleeLevel >= 1 then
         local fled = doFlee(root, hum, killerPos, fleeLevel)
         if fled then return end
     end
+
+    -- الذهاب للمخرج المفتوح
     local openExits = getOpenExits()
     if #openExits > 0 then
         local bestExit = nil
@@ -1053,6 +1206,8 @@ local function logicSurvivor(root, hum)
             return
         end
     end
+
+    -- جمع الـ Loot (الأقرب أولاً)
     if CurrentLootData and CurrentLootData.obj and CurrentLootData.obj.Parent and CurrentLootData.obj.Transparency < 0.9 then
         setStatus("Loot")
         local reached = smartMove(CurrentLootData.obj.Position, CONFIG.LOOT_COLLECT_DIST, killerPos)
@@ -1065,12 +1220,16 @@ local function logicSurvivor(root, hum)
     else
         CurrentLootData = nil
     end
+
+    -- البحث عن أقرب Loot آمن
     local safeLoot = getSafeLoot(killerPos, root.Position)
     if #safeLoot > 0 then
         CurrentLootData = {obj = safeLoot[1].obj, src = safeLoot[1].src}
         setStatus("Loot " .. safeLoot[1].value)
         return
     end
+
+    -- التجوال العشوائي
     if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 or (now - State.LastWanderTime > 10) then
         local nodes = getSafeNodes()
         if #nodes > 0 then
@@ -1086,86 +1245,101 @@ local function logicSurvivor(root, hum)
     end
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- إصلاح 2: تحسين منطق Killer (بدون تفتيش خزائن، مسارات دقيقة)
+-- ═══════════════════════════════════════════════════════════════
 local function logicKiller(root, hum)
+    local now = tick()
+
+    -- البحث عن أقرب لاعب حي (غير ساقط) - فحص مزدوج
     local targetSurv = nil
     local sDist = math.huge
-    local now = tick()
+    local targetPlayer = nil
+
     for _, p in ipairs(Sv.Players:GetPlayers()) do
-        if p ~= LP and getTeam(p) == "survivor" and not isPlayerDowned(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local pr = p.Character.HumanoidRootPart
-            local d = (root.Position - pr.Position).Magnitude
-            if d < sDist then
-                sDist = d
-                targetSurv = pr
+        if p ~= LP then
+            local pTeam = getTeam(p)
+            if pTeam == "survivor" then
+                -- التحقق الأول: هل اللاعب ساقط؟
+                if not isPlayerDowned(p) then
+                    local pChar = p.Character
+                    if pChar then
+                        local pr = pChar:FindFirstChild("HumanoidRootPart")
+                        local ph = pChar:FindFirstChildOfClass("Humanoid")
+                        if pr and ph and ph.Health > 0 then
+                            -- التحقق الثاني: هل RootPart موجود وله Parent
+                            if pr.Parent then
+                                local d = (root.Position - pr.Position).Magnitude
+                                if d < sDist then
+                                    sDist = d
+                                    targetSurv = pr
+                                    targetPlayer = p
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
     end
+
+    -- تجهيز السلاح
     local tool = LP.Character:FindFirstChildOfClass("Tool")
     if not tool then
         local bp = LP.Backpack:FindFirstChildOfClass("Tool")
-        if bp then hum:EquipTool(bp) end
+        if bp then 
+            pcall(function() hum:EquipTool(bp) end)
+            tool = LP.Character:FindFirstChildOfClass("Tool")
+        end
     end
-    if targetSurv then
+
+    if targetSurv and targetPlayer then
+        -- التحقق النهائي قبل المطاردة
+        if isPlayerDowned(targetPlayer) or not targetSurv.Parent then
+            setStatus("Target Invalid")
+            return
+        end
+
+        -- تعيين سرعة المطاردة العالية
+        hum.WalkSpeed = CONFIG.KILLER_CHASE_SPEED
+
         setStatus("Chase " .. math.floor(sDist) .. "m")
-        smartMove(targetSurv.Position, 2)
+
+        -- حساب موقع الهدف مع التنبؤ بالحركة
+        local targetPos = targetSurv.Position
+        local targetVel = targetSurv.Velocity
+        local predictPos = targetPos + (targetVel * 0.2)
+
+        -- التأكد من أن التنبؤ لا يبعد كثيراً
+        if (predictPos - targetPos).Magnitude > 20 then
+            predictPos = targetPos + (targetVel.Unit * 10)
+        end
+
+        -- التحريك المباشر نحو الهدف (بدون مسار معقد للقاتل)
+        if sDist > 5 then
+            -- استخدام MoveTo المباشر للسرعة
+            hum:MoveTo(predictPos)
+            PathData.CurrentMoveTarget = predictPos
+        else
+            -- قريب جداً - تحريك مباشر
+            hum:MoveTo(targetPos)
+            PathData.CurrentMoveTarget = targetPos
+        end
+
+        -- الهجوم إذا كان في النطاق
         if sDist < CONFIG.ATTACK_RANGE and tool then
             if now - State.LastAttack > CONFIG.ATTACK_COOLDOWN then
-                tool:Activate()
+                pcall(function() tool:Activate() end)
                 State.LastAttack = now
             end
         end
         return
     end
-    if now - State.ActionDelay > CONFIG.LOCKER_CHECK_COOLDOWN then
-        local lockers = getLockerModels()
-        local bestLocker, bestLockerDist = nil, math.huge
-        local rootPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-        for _, cl in ipairs(lockers) do
-            if cl and cl.Parent then
-                local clPos = cl:IsA("Model") and (cl.PrimaryPart and cl.PrimaryPart.Position or cl:GetModelCFrame().Position) or cl.Position
-                local clPos2D = Vector3.new(clPos.X, 0, clPos.Z)
-                local d = (rootPos2D - clPos2D).Magnitude
-                if d < bestLockerDist then
-                    bestLockerDist = d
-                    bestLocker = cl
-                end
-            end
-        end
-        if bestLocker then
-            local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            local reached = smartMove(targetPos, 3)
-            if reached then
-                if tool and now - State.LastAttack > 0.8 then
-                    tool:Activate()
-                    State.LastAttack = now
-                    State.ActionDelay = now
-                end
-            end
-            return
-        end
-    end
-    if not State.MapWanderTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.MapWanderTarget.X, 0, State.MapWanderTarget.Z)).Magnitude < 5 or (now - State.LastWanderTime > 8) then
-        local map = getCachedMap()
-        local nodes = {}
-        if map then
-            local lf = map:FindFirstChild("LootSpawns", true)
-            if lf then
-                for _, v in ipairs(lf:GetDescendants()) do
-                    if v:IsA("BasePart") then table.insert(nodes, v.Position) end
-                end
-            end
-        end
-        if #nodes > 0 then
-            State.MapWanderTarget = nodes[math.random(1, #nodes)]
-        else
-            State.MapWanderTarget = root.Position + Vector3.new(math.random(-25, 25), 0, math.random(-25, 25))
-        end
-        State.LastWanderTime = now
-    end
-    if State.MapWanderTarget then
-        setStatus("Search")
-        smartMove(State.MapWanderTarget, 2)
-    end
+
+    -- لا يوجد لاعبون أحياء - الوقوف في المكان (بدون تفتيش خزائن)
+    setStatus("No Targets")
+    hum.WalkSpeed = CONFIG.KILLER_WANDER_SPEED
+    hum:MoveTo(root.Position)
 end
 
 btn.MouseButton1Click:Connect(function()
@@ -1182,6 +1356,7 @@ btn.MouseButton1Click:Connect(function()
         State.CurrentTeam = getTeam(LP)
         State.LastWanderTime = 0
         State.AvoidanceDir = nil
+        State.ConsecutiveStuck = 0
         KillerData.Player = nil
         KillerData.Root = nil
         KillerData.Position = nil
@@ -1191,6 +1366,7 @@ btn.MouseButton1Click:Connect(function()
         PathData.StuckCount = 0
         PathData.LastPos = Vector3.new()
         PathData.LastPosTime = 0
+        PathData.LastPathComputePos = nil
     else
         btn.Text = "Auto SH: OFF"
         btn.TextColor3 = Color3.fromRGB(255, 80, 80)
@@ -1229,6 +1405,7 @@ task.spawn(function()
                         PathData.Path = nil
                         PathData.CurrentMoveTarget = nil
                         PathData.StuckCount = 0
+                        State.ConsecutiveStuck = 0
                     end
                     if team == "lobby" then
                         logicLobby(root, hum)
