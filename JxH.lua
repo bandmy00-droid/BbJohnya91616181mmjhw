@@ -201,7 +201,7 @@ local function getLootValue(obj)
     return cache(nil)
 end
 
-local function getSafeLoot(killerPos)
+local function getSafeLoot(killerPos, rootPos)
     local lootList = {}
     local map = getMap()
     local lf = map and map:FindFirstChild("LootSpawns", true) or workspace:FindFirstChild("LootSpawns", true)
@@ -216,21 +216,27 @@ local function getSafeLoot(killerPos)
                     target = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
                 end
                 if target and target.Transparency < 0.9 then
-                    if not killerPos or (Vector3.new(target.Position.X, 0, target.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude > 45 then
+                    if not killerPos or (Vector3.new(target.Position.X, 0, target.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude > 50 then
                         local val = getLootValue(obj)
                         if val and val >= 1 and val ~= 20 then
-                            table.insert(lootList, {obj = target, src = obj, value = val})
+                            local dist = (Vector3.new(target.Position.X, 0, target.Position.Z) - Vector3.new(rootPos.X, 0, rootPos.Z)).Magnitude
+                            table.insert(lootList, {obj = target, src = obj, value = val, distance = dist})
                         end
                     end
                 end
             end
         end
     end
-    table.sort(lootList, function(a, b) return a.value > b.value end)
+    table.sort(lootList, function(a, b)
+        if a.value == b.value then
+            return a.distance < b.distance
+        end
+        return a.value > b.value
+    end)
     return lootList
 end
 
-local function getSafeExits(killerPos)
+local function getOpenExits()
     local exits = {}
     local map = getMap()
     if not map then return exits end
@@ -256,11 +262,7 @@ local function getSafeExits(killerPos)
                             end
                         end
                     end
-                    if gatePart then
-                        if not killerPos or (Vector3.new(gatePart.Position.X, 0, gatePart.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude > 40 then
-                            table.insert(exits, gatePart)
-                        end
-                    end
+                    if gatePart then table.insert(exits, gatePart) end
                 end
             end
         end
@@ -303,6 +305,16 @@ local function getLockerModels()
     _lockerCache.models = models
     _lockerCache.time = tick()
     return models
+end
+
+local function checkLineOfSight(startPos, endPos, ignoreList)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = ignoreList
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local dir = (endPos - startPos)
+    if dir.Magnitude > 60 then return false end
+    local ray = workspace:Raycast(startPos, dir, rayParams)
+    return ray == nil
 end
 
 local function getSafeNodes()
@@ -402,7 +414,7 @@ local function smartMove(targetPos, stopDistance)
                 PathData.Path = nil
                 PathData.StuckCount = 0
                 PathData.CurrentMoveTarget = nil
-                local randomOffset = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
+                local randomOffset = Vector3.new(math.random(-12, 12), 0, math.random(-12, 12))
                 hum:MoveTo(root.Position + randomOffset)
                 return false
             end
@@ -514,19 +526,28 @@ local function logicSurvivor(root, hum)
         end
     end
 
-    local safeExits = getSafeExits(killerPos)
-
+    local openExits = getOpenExits()
+    
     if isPlayerDowned(LP) then
         State.IsHiding = false
         State.TargetLocker = nil
         State.CurrentLoot = nil
         
-        if #safeExits > 0 then
-            local ce = getClosest(safeExits, root.Position)
-            if ce then
-                smartMove(ce.Position, 0.1)
-                return
+        local bestExit = nil
+        local bestExitDist = math.huge
+        for _, ce in ipairs(openExits) do
+            if not killerPos or (Vector3.new(ce.Position.X, 0, ce.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude > 30 then
+                local d = (root.Position - ce.Position).Magnitude
+                if d < bestExitDist then
+                    bestExitDist = d
+                    bestExit = ce
+                end
             end
+        end
+
+        if bestExit then
+            smartMove(bestExit.Position, 1)
+            return
         end
         
         local upSurvs = {}
@@ -559,10 +580,12 @@ local function logicSurvivor(root, hum)
     end
 
     if State.IsHiding then
-        if killer and kDist > 70 then
+        if killer and kDist > 80 then
             State.IsHiding = false
             State.TargetLocker = nil
             hum.Jump = true
+            local forwardVec = root.CFrame.LookVector * 5
+            hum:MoveTo(root.Position + forwardVec)
         else
             PathData.CurrentMoveTarget = nil
             hum:MoveTo(root.Position)
@@ -570,7 +593,7 @@ local function logicSurvivor(root, hum)
         end
     end
 
-    if killer and kDist < 55 then
+    if killer and kDist < 65 then
         State.CurrentLoot = nil
         local lockers = getLockerModels()
         local bestLocker, bestLockerDist = nil, math.huge
@@ -585,10 +608,11 @@ local function logicSurvivor(root, hum)
             end
         end
         
-        if bestLocker and bestLockerDist < 40 then
+        if bestLocker and bestLockerDist < 35 then
             local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            local reached = smartMove(targetPos, 0.1)
+            local reached = smartMove(targetPos, 2.5)
             if reached then
+                interactWithPrompt(bestLocker)
                 State.IsHiding = true
                 State.TargetLocker = bestLocker
             end
@@ -610,27 +634,44 @@ local function logicSurvivor(root, hum)
             smartMove(bestEscapeNode, 2)
         else
             local dir = (root.Position - killer.Position).Unit
-            local escapePos = root.Position + (dir * 40)
+            local escapePos = root.Position + (dir * 60)
             smartMove(escapePos, 2)
         end
         return
     end
 
-    if #safeExits > 0 then
-        local ce = getClosest(safeExits, root.Position)
-        if ce then
-            smartMove(ce.Position, 0.1)
+    if #openExits > 0 then
+        local bestExit = nil
+        local bestExitDist = math.huge
+        for _, ce in ipairs(openExits) do
+            if not killerPos or (Vector3.new(ce.Position.X, 0, ce.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude > 40 then
+                local d = (root.Position - ce.Position).Magnitude
+                if d < bestExitDist then
+                    bestExitDist = d
+                    bestExit = ce
+                end
+            end
+        end
+        if bestExit then
+            smartMove(bestExit.Position, 0.1)
             return
         end
     end
 
-    local safeLoot = getSafeLoot(killerPos)
-    if #safeLoot > 0 then
-        local targetLoot = safeLoot[1].obj
-        local reached = smartMove(targetLoot.Position, 0.1)
+    if State.CurrentLoot and State.CurrentLoot.Parent and State.CurrentLoot.Transparency < 0.9 then
+        local reached = smartMove(State.CurrentLoot.Position, 0.1)
         if reached then
-            interactWithPrompt(safeLoot[1].src)
+            interactWithPrompt(State.CurrentLoot)
+            State.CurrentLoot = nil
         end
+        return
+    else
+        State.CurrentLoot = nil
+    end
+
+    local safeLoot = getSafeLoot(killerPos, root.Position)
+    if #safeLoot > 0 then
+        State.CurrentLoot = safeLoot[1].obj
         return
     end
     
@@ -696,7 +737,7 @@ local function logicKiller(root, hum)
         end
         if bestLocker then
             local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
-            local reached = smartMove(targetPos, 0.1)
+            local reached = smartMove(targetPos, 2.5)
             if reached then
                 if tool and now - State.LastAttack > 0.8 then
                     tool:Activate()
