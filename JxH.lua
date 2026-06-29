@@ -21,10 +21,12 @@ local CONFIG = {
     PATH_TIMEOUT = 8,
     WALL_AVOIDANCE_DIST = 6,
     KILLER_DETECT_RANGE = 50,
+    KILLER_CLOSE_RANGE = 20,
     HIDE_DIST_TO_KILLER = 60,
     SAFE_EXIT_DIST_FROM_KILLER = 40,
-    LOCKER_SEARCH_RANGE = 40,
+    LOCKER_SEARCH_RANGE = 25,
     LOOT_SAFE_DIST_FROM_KILLER = 50,
+    LOOT_COLLECT_DIST = 0.5,
     ESCAPE_DIR_MULTIPLIER = 50,
     ATTACK_RANGE = 12,
     ATTACK_COOLDOWN = 0.6,
@@ -243,20 +245,20 @@ local function getLootValue(obj)
             if c:IsA("ProximityPrompt") then
                 local at = c:GetAttribute("ActionText")
                 if at and type(at) == "string" then
-                    local n = string.match(at, "+(%d+)")
+                    local n = string.match(at, "(%d+)")
                     if n then fallback = tonumber(n); break end
                 end
                 local txt = (c.ActionText or "") .. " " .. (c.ObjectText or "")
-                local n = string.match(txt, "+(%d+)") or string.match(txt, "(%d+)%s*[Cc]oin") or string.match(txt, "(%d+)%s*[Gg]old") or string.match(txt, "(%d+)%s*[Pp]oint")
+                local n = string.match(txt, "(%d+)") or string.match(txt, "(%d+)%s*[Cc]oin") or string.match(txt, "(%d+)%s*[Gg]old") or string.match(txt, "(%d+)%s*[Pp]oint")
                 if n then fallback = tonumber(n); break end
             elseif c:IsA("ClickDetector") then
                 local at = c:GetAttribute("ActionText")
                 if at and type(at) == "string" then
-                    local n = string.match(at, "+(%d+)")
+                    local n = string.match(at, "(%d+)")
                     if n then fallback = tonumber(n); break end
                 end
             elseif c:IsA("TextLabel") or c:IsA("TextButton") then
-                local n = string.match(c.Text, "+(%d+)")
+                local n = string.match(c.Text, "(%d+)")
                 if n then fallback = tonumber(n); break end
             elseif (c:IsA("IntValue") or c:IsA("NumberValue")) and not fallback then
                 fallback = c.Value
@@ -281,15 +283,29 @@ local function getSafeLoot(killerPos, rootPos)
     local lf = map and map:FindFirstChild("LootSpawns", true) or Sv.Workspace:FindFirstChild("LootSpawns", true)
     if not lf then return lootList end
     for _, obj in ipairs(lf:GetDescendants()) do
-        if obj and obj.Parent and (obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector")) then
-            local parent = obj.Parent
+        if obj and obj.Parent and (obj:IsA("BasePart") or obj:IsA("Model")) then
             local target = nil
-            if parent:IsA("BasePart") then
-                target = parent
-            elseif parent:IsA("Model") then
-                target = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
+            local prompt = nil
+            if obj:IsA("BasePart") then
+                target = obj
+                for _, d in ipairs(obj:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") or d:IsA("ClickDetector") then
+                        prompt = d
+                        break
+                    end
+                end
+            elseif obj:IsA("Model") then
+                target = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
+                if target then
+                    for _, d in ipairs(obj:GetDescendants()) do
+                        if d:IsA("ProximityPrompt") or d:IsA("ClickDetector") then
+                            prompt = d
+                            break
+                        end
+                    end
+                end
             end
-            if target and target.Transparency < 0.9 then
+            if target and target.Transparency < 0.9 and prompt then
                 local distToKiller = math.huge
                 if killerPos then
                     distToKiller = (Vector3.new(target.Position.X, 0, target.Position.Z) - Vector3.new(killerPos.X, 0, killerPos.Z)).Magnitude
@@ -298,7 +314,7 @@ local function getSafeLoot(killerPos, rootPos)
                     local val = getLootValue(obj)
                     if val and val >= 1 and val ~= 20 then
                         local dist = (Vector3.new(target.Position.X, 0, target.Position.Z) - Vector3.new(rootPos.X, 0, rootPos.Z)).Magnitude
-                        table.insert(lootList, {obj = target, src = obj, value = val, distance = dist})
+                        table.insert(lootList, {obj = target, src = prompt, value = val, distance = dist})
                     end
                 end
             end
@@ -752,6 +768,39 @@ local function smartMove(targetPos, stopDistance)
     return false
 end
 
+local function getBestEscapePos(root, killerPos)
+    local char = LP.Character
+    if not char then return root.Position + Vector3.new(math.random(-30, 30), 0, math.random(-30, 30)) end
+    local awayDir = (root.Position - killerPos).Unit
+    if awayDir.Magnitude < 0.1 then awayDir = Vector3.new(1, 0, 0) end
+    local bestPos = root.Position + (awayDir * CONFIG.ESCAPE_DIR_MULTIPLIER)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {char}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.IgnoreWater = true
+    local bestScore = -1
+    for angle = 0, 360, 30 do
+        local rad = math.rad(angle)
+        local dir = Vector3.new(
+            awayDir.X * math.cos(rad) - awayDir.Z * math.sin(rad),
+            0,
+            awayDir.X * math.sin(rad) + awayDir.Z * math.cos(rad)
+        ).Unit
+        local testPos = root.Position + (dir * CONFIG.ESCAPE_DIR_MULTIPLIER)
+        local ray = Sv.Workspace:Raycast(root.Position, (testPos - root.Position), rayParams)
+        local dist = CONFIG.ESCAPE_DIR_MULTIPLIER
+        if ray and ray.Instance and ray.Instance.CanCollide then
+            dist = (ray.Position - root.Position).Magnitude * 0.8
+        end
+        local score = dist + (dir - awayDir).Magnitude * 10
+        if score > bestScore then
+            bestScore = score
+            bestPos = root.Position + (dir * dist)
+        end
+    end
+    return bestPos
+end
+
 local function logicLobby(root, hum)
     setStatus("Lobby")
     if not State.LobbyTarget or (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(State.LobbyTarget.X, 0, State.LobbyTarget.Z)).Magnitude < 3 then
@@ -857,7 +906,14 @@ local function logicSurvivor(root, hum)
         end
     end
     if killer and kDist < CONFIG.KILLER_DETECT_RANGE then
-        setStatus("Run " .. math.floor(kDist) .. "m")
+        if kDist < CONFIG.KILLER_CLOSE_RANGE then
+            setStatus("Flee " .. math.floor(kDist) .. "m")
+            CurrentLootData = nil
+            local escapePos = getBestEscapePos(root, killerPos)
+            smartMove(escapePos, 2)
+            return
+        end
+        setStatus("Hide " .. math.floor(kDist) .. "m")
         CurrentLootData = nil
         local lockers = getLockerModels()
         local bestLocker, bestLockerDist = nil, math.huge
@@ -873,7 +929,7 @@ local function logicSurvivor(root, hum)
                 end
             end
         end
-        if bestLocker and bestLockerDist < CONFIG.LOCKER_SEARCH_RANGE and kDist < 45 then
+        if bestLocker and bestLockerDist < CONFIG.LOCKER_SEARCH_RANGE then
             local targetPos = bestLocker:IsA("Model") and (bestLocker.PrimaryPart and bestLocker.PrimaryPart.Position or bestLocker:GetModelCFrame().Position) or bestLocker.Position
             local reached = smartMove(targetPos, 3)
             if reached then
@@ -883,25 +939,9 @@ local function logicSurvivor(root, hum)
             end
             return
         end
-        setStatus("Escape")
-        local nodes = getSafeNodes()
-        local bestEscapeNode = nil
-        local maxKDist = 0
-        for _, node in ipairs(nodes) do
-            local dToK = (node - killerPos).Magnitude
-            if dToK > maxKDist then
-                maxKDist = dToK
-                bestEscapeNode = node
-            end
-        end
-        if bestEscapeNode then
-            smartMove(bestEscapeNode, 2)
-        else
-            local dir = (root.Position - killerPos).Unit
-            if dir.Magnitude < 0.1 then dir = Vector3.new(1, 0, 0) end
-            local escapePos = root.Position + (dir * CONFIG.ESCAPE_DIR_MULTIPLIER)
-            smartMove(escapePos, 2)
-        end
+        setStatus("Flee " .. math.floor(kDist) .. "m")
+        local escapePos = getBestEscapePos(root, killerPos)
+        smartMove(escapePos, 2)
         return
     end
     if #openExits > 0 then
@@ -924,7 +964,7 @@ local function logicSurvivor(root, hum)
     end
     if CurrentLootData and CurrentLootData.obj and CurrentLootData.obj.Parent and CurrentLootData.obj.Transparency < 0.9 then
         setStatus("Loot")
-        local reached = smartMove(CurrentLootData.obj.Position, 0.1)
+        local reached = smartMove(CurrentLootData.obj.Position, CONFIG.LOOT_COLLECT_DIST)
         if reached then
             interactWithPrompt(CurrentLootData.obj, CurrentLootData.src)
             task.wait(0.2)
