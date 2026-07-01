@@ -4797,6 +4797,7 @@ local function buildUI()
                     local b=Instance_new("TextButton"); b.Parent=langDropdown
                     b.Size=UDim2_new(1,0,0,30); b.BackgroundColor3=UI.C.ROW
                     b.Text=""; b.BorderSizePixel=0
+                    b.ZIndex = 101
                     UI.registerTheme(b,"ROW","BackgroundColor3")
                     
                     local t=Instance_new("TextLabel"); t.Parent=b
@@ -4804,6 +4805,7 @@ local function buildUI()
                     t.BackgroundTransparency=1; t.Text=data[2]; t.TextColor3=Color3_new(1,1,1)
                     t.Font=Enum.Font.GothamSemibold; t.TextSize=10
                     t.TextXAlignment=Enum.TextXAlignment.Left
+                    t.ZIndex = 102
                     
                     if St.Language==data[1] then
                         t.TextColor3=UI.C.ACCENT
