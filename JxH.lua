@@ -4780,8 +4780,7 @@ local function buildUI()
                 langDropdown.Size=UDim2_new(0,dropWidth,0,94)
                 langDropdown.Position=UDim2_new(0,absPos.X,0,absPos.Y+absSize.Y+4)
                 langDropdown.BackgroundColor3=UI.C.PANEL; langDropdown.BorderSizePixel=0
-                langDropdown.ZIndex=100; langDropdown.ClipsDescendants=true
-                langDropdown.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                langDropdown.ZIndex=1000; langDropdown.ClipsDescendants=true
                 UI.registerTheme(langDropdown,"PANEL","BackgroundColor3")
                 
                 local ddCrn=Instance_new("UICorner"); ddCrn.Parent=langDropdown; ddCrn.CornerRadius=UDim_new(0,6)
@@ -4797,15 +4796,15 @@ local function buildUI()
                     local b=Instance_new("TextButton"); b.Parent=langDropdown
                     b.Size=UDim2_new(1,0,0,30); b.BackgroundColor3=UI.C.ROW
                     b.Text=""; b.BorderSizePixel=0
-                    b.ZIndex = 101
+                    b.ZIndex = 1001
                     UI.registerTheme(b,"ROW","BackgroundColor3")
                     
                     local t=Instance_new("TextLabel"); t.Parent=b
-                    t.Size=UDim2_new(1,-10,1,0); t.Position=UDim2_new(0,10,0,0)
+                    t.Size=UDim2_new(1,-20,1,0); t.Position=UDim2_new(0,10,0,0)
                     t.BackgroundTransparency=1; t.Text=data[2]; t.TextColor3=Color3_new(1,1,1)
                     t.Font=Enum.Font.GothamSemibold; t.TextSize=10
-                    t.TextXAlignment=Enum.TextXAlignment.Left
-                    t.ZIndex = 102
+                    t.TextXAlignment=St.Language=="AR" and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+                    t.ZIndex = 1002
                     
                     if St.Language==data[1] then
                         t.TextColor3=UI.C.ACCENT
