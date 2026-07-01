@@ -1,7 +1,7 @@
 local UPDATE_VERSION = "V7.0"
-local UPDATE_TEXT_EN = "1. 🚀 New Future Auto SH ( Auto farm )\n2. 🛠️ Bug Fixed\n3. 🏃 Animation bug fixed ( Killer )\n4. ⚡ More FPS More Safe Play\n5. ✨ and more"
-local UPDATE_TEXT_RU = "1. 🚀 Новая функция Auto SH (Автофарм)\n2. 🛠️ Ошибки исправлены\n3. 🏃 Исправлен баг анимации (Убийца)\n4. ⚡ Больше FPS, безопаснее игра\n5. ✨ и многое другое"
-local UPDATE_TEXT_AR = "1. 🚀 ميزة Auto SH جديدة (فارم تلقائي)\n2. 🛠️ تم إصلاح الأخطاء\n3. 🏃 تم إصلاح خطأ الانميشن (القاتل)\n4. ⚡ FPS أعلى ولعب أكثر أماناً\n5. ✨ والمزيد"
+local UPDATE_TEXT_EN = "1. 🚀 New Future Auto HS ( Auto farm )\n2. 🛠️ Bug Fixed\n3. 🏃 Animation bug fixed ( Killer )\n4. ⚡ More FPS More Safe Play\n5. ✨ and more\n6. 🦘 New feature Jump Boost"
+local UPDATE_TEXT_RU = "1. 🚀 Новая функция Auto HS (Автофарм)\n2. 🛠️ Ошибки исправлены\n3. 🏃 Исправлен баг анимации (Убийца)\n4. ⚡ Больше FPS, безопаснее игра\n5. ✨ и многое другое\n6. 🦘 Новая функция: Усиление прыжка"
+local UPDATE_TEXT_AR = "1. 🚀 ميزة Auto HS جديدة (فارم تلقائي)\n2. 🛠️ تم إصلاح الأخطاء\n3. 🏃 تم إصلاح خطأ الانميشن (القاتل)\n4. ⚡ FPS أعلى ولعب أكثر أماناً\n5. ✨ والمزيد\n6. 🦘 ميزة جديدة: تعزيز القفز"
 local math_floor=math.floor
 local math_max=math.max
 local math_min=math.min
@@ -4749,15 +4749,18 @@ local function buildUI()
             _updateLangBtns()
 
             local langDropdown
+            local blocker
+            
             local function toggleDropdown(show)
                 if langDropdown then langDropdown:Destroy(); langDropdown=nil end
+                if blocker then blocker:Destroy(); blocker=nil end
                 if not show then 
                     langArrow.Rotation = 180
                     return 
                 end
                 langArrow.Rotation = 0
                 
-                local blocker = Instance_new("TextButton")
+                blocker = Instance_new("TextButton")
                 blocker.Size = UDim2_new(1,0,1,0)
                 blocker.BackgroundTransparency = 1
                 blocker.Text = ""
@@ -4765,28 +4768,30 @@ local function buildUI()
                 blocker.Parent = ScreenGui
                 blocker.MouseButton1Click:Connect(function() toggleDropdown(false) end)
 
-                langDropdown=Instance_new("ScrollingFrame"); langDropdown.Parent=langBtn
-                langDropdown.Size=UDim2_new(1,0,0,90); langDropdown.Position=UDim2_new(0,0,1,4)
+                local absPos = langBtn.AbsolutePosition
+                local absSize = langBtn.AbsoluteSize
+
+                langDropdown=Instance_new("Frame"); langDropdown.Parent=ScreenGui
+                langDropdown.Size=UDim2_new(0,absSize.X,0,94)
+                langDropdown.Position=UDim2_new(0,absPos.X,0,absPos.Y+absSize.Y+4)
                 langDropdown.BackgroundColor3=UI.C.PANEL; langDropdown.BorderSizePixel=0
                 langDropdown.ZIndex=100; langDropdown.ClipsDescendants=true
-                langDropdown.ScrollBarThickness = 2
-                langDropdown.AutomaticCanvasSize = Enum.AutomaticSize.Y
-                langDropdown.CanvasSize = UDim2_new(0,0,0,0)
                 UI.registerTheme(langDropdown,"PANEL","BackgroundColor3")
                 local ddCrn=Instance_new("UICorner"); ddCrn.Parent=langDropdown; ddCrn.CornerRadius=UDim_new(0,6)
                 local ddStr=Instance_new("UIStroke"); ddStr.Parent=langDropdown
                 ddStr.Color=UI.C.ACCENT; ddStr.Thickness=1; ddStr.Transparency=0.5
                 UI.registerTheme(ddStr,"ACCENT","Color")
+                
                 local ddList=Instance_new("UIListLayout"); ddList.Parent=langDropdown
                 ddList.Padding=UDim_new(0,0); ddList.SortOrder=Enum.SortOrder.LayoutOrder
                 
                 local langs = {{"EN","English"},{"RU","Русский"},{"AR","العربية"}}
                 for _,data in ipairs(langs) do
                     local b=Instance_new("TextButton"); b.Parent=langDropdown
-                    b.Size=UDim2_new(1,0,0,28); b.BackgroundColor3=UI.C.ROW
+                    b.Size=UDim2_new(1,0,0,30); b.BackgroundColor3=UI.C.ROW
                     b.Text=""; b.BorderSizePixel=0
-                    UI.registerTheme(b,"ROW","BackgroundColor3")
                     b.ZIndex=101
+                    UI.registerTheme(b,"ROW","BackgroundColor3")
                     local t=Instance_new("TextLabel"); t.Parent=b
                     t.Size=UDim2_new(1,-10,1,0); t.Position=UDim2_new(0,10,0,0)
                     t.BackgroundTransparency=1; t.Text=data[2]; t.TextColor3=Color3_new(1,1,1)
@@ -4797,7 +4802,6 @@ local function buildUI()
                     end
                     b.MouseButton1Click:Connect(function()
                         St.Language=data[1]; _applyLang(); _updateLangBtns(); 
-                        if blocker then blocker:Destroy() end
                         toggleDropdown(false); 
                         task.defer(F.saveSettings)
                     end)
