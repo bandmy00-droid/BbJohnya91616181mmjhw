@@ -4731,16 +4731,20 @@ local function buildUI()
             UI.registerTheme(langBtn,"OFF","BackgroundColor3")
             langBtn.BorderSizePixel=0
             local lbCrn=Instance_new("UICorner"); lbCrn.Parent=langBtn; lbCrn.CornerRadius=UDim_new(0,6)
+            
             local langTxt=Instance_new("TextLabel"); langTxt.Parent=langBtn
             langTxt.Size=UDim2_new(1,-20,1,0); langTxt.Position=UDim2_new(0,8,0,0)
             langTxt.BackgroundTransparency=1; langTxt.TextColor3=Color3_new(1,1,1)
             langTxt.Font=Enum.Font.GothamBold; langTxt.TextSize=10
             langTxt.TextXAlignment=Enum.TextXAlignment.Left
+            langTxt.ZIndex = 2
+            
             local langArrow=Instance_new("TextLabel"); langArrow.Parent=langBtn
             langArrow.Size=UDim2_new(0,15,1,0); langArrow.Position=UDim2_new(1,-18,0,0)
             langArrow.BackgroundTransparency=1; langArrow.TextColor3=UI.C.SUBTEXT
             langArrow.Font=Enum.Font.GothamBold; langArrow.TextSize=8
             langArrow.Text="V"; langArrow.Rotation=180
+            langArrow.ZIndex = 2
 
             local function _updateLangBtns()
                 local names = {EN="English", RU="Русский", AR="العربية"}
@@ -4770,13 +4774,16 @@ local function buildUI()
 
                 local absPos = langBtn.AbsolutePosition
                 local absSize = langBtn.AbsoluteSize
+                local dropWidth = math.max(absSize.X, 100)
 
                 langDropdown=Instance_new("Frame"); langDropdown.Parent=ScreenGui
-                langDropdown.Size=UDim2_new(0,absSize.X,0,94)
+                langDropdown.Size=UDim2_new(0,dropWidth,0,94)
                 langDropdown.Position=UDim2_new(0,absPos.X,0,absPos.Y+absSize.Y+4)
                 langDropdown.BackgroundColor3=UI.C.PANEL; langDropdown.BorderSizePixel=0
                 langDropdown.ZIndex=100; langDropdown.ClipsDescendants=true
+                langDropdown.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
                 UI.registerTheme(langDropdown,"PANEL","BackgroundColor3")
+                
                 local ddCrn=Instance_new("UICorner"); ddCrn.Parent=langDropdown; ddCrn.CornerRadius=UDim_new(0,6)
                 local ddStr=Instance_new("UIStroke"); ddStr.Parent=langDropdown
                 ddStr.Color=UI.C.ACCENT; ddStr.Thickness=1; ddStr.Transparency=0.5
@@ -4790,13 +4797,14 @@ local function buildUI()
                     local b=Instance_new("TextButton"); b.Parent=langDropdown
                     b.Size=UDim2_new(1,0,0,30); b.BackgroundColor3=UI.C.ROW
                     b.Text=""; b.BorderSizePixel=0
-                    b.ZIndex=101
                     UI.registerTheme(b,"ROW","BackgroundColor3")
+                    
                     local t=Instance_new("TextLabel"); t.Parent=b
                     t.Size=UDim2_new(1,-10,1,0); t.Position=UDim2_new(0,10,0,0)
                     t.BackgroundTransparency=1; t.Text=data[2]; t.TextColor3=Color3_new(1,1,1)
                     t.Font=Enum.Font.GothamSemibold; t.TextSize=10
                     t.TextXAlignment=Enum.TextXAlignment.Left
+                    
                     if St.Language==data[1] then
                         t.TextColor3=UI.C.ACCENT
                     end
@@ -4807,9 +4815,11 @@ local function buildUI()
                     end)
                 end
             end
+            
             langBtn.MouseButton1Click:Connect(function()
                 toggleDropdown(not langDropdown)
             end)
+            
             St.UIRefs._updateLangBtns=_updateLangBtns
             UI.A(settPage,langRow)
         end
